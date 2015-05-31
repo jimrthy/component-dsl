@@ -12,6 +12,10 @@ This was heavily inspired by
 out trying to use that, but the author told me that he was having
 intractable problems getting it to restart.
 
+(Disclaimer: I haven't had a chance to try this next part
+out just yet). It should (theoretically) play very nicely
+with io.aviso/config (FIXME: link).
+
 ## Usage
 
 Until I get around to figuring out how to push this to clojars, you'll
