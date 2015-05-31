@@ -1,4 +1,4 @@
-(ns component-dsl.example.routes
+(ns component-dsl.routes
   "Namespace that pretends to set up URL routing"
   (:require [com.stuartsierra.component :as component]))
 

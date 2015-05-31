@@ -1,4 +1,4 @@
-(ns component-dsl.example.core
+(ns component-dsl.core
   "Namespace that pretends to create a web server
 
 This and routes really belong under the test folder,

@@ -11,8 +11,8 @@
 
 (defn simple-web-components
   []
-  '{:web component-dsl.example.core/ctor
-    :routes component-dsl.example.routes/ctor})
+  '{:web component-dsl.core/ctor
+    :routes component-dsl.routes/ctor})
 
 (s/defn initialize-web
   []
@@ -35,8 +35,8 @@
 This test is ugly and digs into far too many low-level details.
 It should probably just go away."
   []
-  (let [descr '{:web component-dsl.web.core/ctor
-                :routes component-dsl.web.routes/ctor}
+  (let [descr '{:web component-dsl.core/ctor
+                :routes component-dsl.routes/ctor}
         creator (fn [[name ctor]]
                   (println "Creating" name "using" ctor)
                   ;; Called for side-effects so we have
