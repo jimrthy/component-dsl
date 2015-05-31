@@ -1,0 +1,3 @@
+{:structure {:web component-dsl.example.core/ctor
+             :routes component-dsl.example.routes/ctor}
+ :dependencies {:web [:routes]}}
