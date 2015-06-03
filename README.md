@@ -44,6 +44,12 @@ Alternatively, put description into an EDN file and use system/ctor instead:
 
     (def ready-to-go (system/ctor "/path/to/description.edn" constructor-options))
 
+## Afterthoughts
+
+Odds are, you should be able to pass the dependencies as a map, the
+same way you would to component/system-using. This is just a light
+wrapper over that, after all.
+
 ## Future
 
 1. Get this published on clojars

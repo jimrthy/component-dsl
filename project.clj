@@ -1,4 +1,4 @@
-(defproject com.jimrthy/component-dsl "0.1.0"
+(defproject com.jimrthy/component-dsl "0.1.1-SNAPSHOT"
   :description "Describe your Components in EDN"
   :url "https://github.com/jimrthy/component-dsl"
   :license {:name "Eclipse Public License"
