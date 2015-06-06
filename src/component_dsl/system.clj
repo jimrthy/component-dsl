@@ -54,7 +54,7 @@ and its dependencies altogether?
 The entire point is really to make all those details
 declarative and easy, then to merge them into that sort
 of single map in here."
-  {s/Keyword option-map})
+  {s/Keyword (s/maybe option-map)})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Internals
