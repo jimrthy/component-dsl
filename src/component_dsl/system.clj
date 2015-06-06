@@ -22,6 +22,11 @@
   {:structure system-structure
    :dependencies system-dependencies})
 
+(def named-instances
+  "key-value pairs that are suitable for passing to dependencies
+as the last argument of apply"
+  [[(s/one s/Keyword "name") (s/one s/Any "instance")]])
+
 (def option-map
   "The options to supply to each component when it's constructed"
   {s/Keyword s/Any})
@@ -29,12 +34,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Internals
 
-(s/defn initialize :- [[(s/one s/Keyword "name") (s/one s/Any "instance")]]
+(s/defn initialize :- named-instances
   "require the individual namespaces and call each Component's constructor,
-returning a seq of name/instance pairs that probably should have been a map
-
-N.B. this returns key-value pairs that are suitable for passing to dependencies
-as the last argument of apply"
+returning a seq of name/instance pairs that probably should have been a map"
   [descr :- {s/Keyword (s/either s/Symbol [(s/one s/Symbol "name") s/Any])}
    config-options :- {s/Any s/Any}]
   (mapcat (fn [[name ctor]]
@@ -47,7 +49,17 @@ as the last argument of apply"
               ;; Called for the side-effects
               (-> ctor-sym namespace symbol require)
               (let [real-ctor (resolve ctor-sym)
-                    instance (apply real-ctor args)]
+                    ;; The idea here is that I want to supply the
+                    ;; part of the configuration tree associated with
+                    ;; this component along with any arguments that were
+                    ;; passed along in the description.
+                    ;; At least, I thought I want that.
+                    ;; Now that I've taken a first stab at implementing
+                    ;; it, it just seems like a horribly confusing
+                    ;; idea.
+                    ;; After all, my initial implementation trying to
+                    ;; mix the two was horribly broken.
+                    instance (apply real-ctor (conj [(name config-options)] args))]
                 [name instance])))
           descr))
 
