@@ -9,5 +9,5 @@
   (stop [this]
     (assoc this handler nil)))
 
-(defn ctor [_]
-  (->Routing nil))
+(defn ctor [options]
+  (->Routing options))

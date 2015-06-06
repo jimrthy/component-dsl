@@ -61,7 +61,7 @@ It should probably just go away."
       (let [routes (get web-server :routes :not-found)]
         ;; No routes until we've started...
         ;; but the key is there
-        (is (nil? routes))
+        (is (= {} routes))
         ;; I really expected this to return either nil or false
         ;; The key's there. Or, at least, it's getting printed.
         ;; TODO: Dig deeper into the guts to figure out why Id
@@ -106,10 +106,12 @@ in the project from which this was refactored"
           (finally
             (component/stop started)))))))
 
-(let [inited (sys/system-map (simple-web-components) {})
-      system (sys/dependencies inited {:web [:routes]})
-      started (component/start system)]
-  (-> started keys))
+(comment
+  (let [inited (sys/system-map (simple-web-components) {:web :server
+                                                        :routes {:handler :route-description}})
+        system (sys/dependencies inited {:web [:routes]})
+        started (component/start system)]
+    (-> started keys)))
 
 (deftest almost-realistic
   "This is getting closer to something you might actually do"

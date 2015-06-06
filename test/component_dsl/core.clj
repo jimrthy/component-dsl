@@ -7,5 +7,5 @@ but my unit tests can't find them there.
 TODO: Fix that")
 
 (defn ctor
-  [_]
-  {:routes nil})
+  [options]
+  {:routes options})
