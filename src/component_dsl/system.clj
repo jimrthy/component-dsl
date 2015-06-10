@@ -69,8 +69,8 @@ returning a seq of name/instance pairs that probably should have been a map"
                   ;; Called for the side-effects
                   (-> ctor-sym namespace symbol require)
                   (let [ctor (resolve ctor-sym)
-                        options (name config-options)
-                        instance (ctor config-options)]
+                        local-options (name config-options)
+                        instance (ctor local-options)]
                     [name instance]))
                 descr)]
     (println "Initialized System:\n"
