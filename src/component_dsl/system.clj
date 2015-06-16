@@ -54,7 +54,7 @@ and its dependencies altogether?
 The entire point is really to make all those details
 declarative and easy, then to merge them into that sort
 of single map in here."
-  {s/Keyword (s/maybe option-map)})
+  {s/Keyword option-map})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Internals
@@ -73,8 +73,8 @@ returning a seq of name/instance pairs that probably should have been a map"
                         instance (ctor local-options)]
                     [name instance]))
                 descr)]
-    (println "Initialized System:\n"
-             (with-out-str (pprint result)))
+    (comment (println "Initialized System:\n"
+                (with-out-str (pprint result))))
     result))
 
 (s/defn ^:always-validate system-map :- SystemMap
@@ -117,7 +117,7 @@ The :dependencies describes the dependencies among components
 Options is a map of maps that will be supplied to each constructor"
   [config-file-name :- s/Str
    & config-options]
-  (let [options (if (seq config-options)
+  (let [options (if (seq config-options)  ; the way optionals work
                   (first config-options)
                   {})
         descr (load-resource config-file-name)]
