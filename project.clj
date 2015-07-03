@@ -4,7 +4,7 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[com.stuartsierra/component "0.2.3"]
-                 [org.clojure/clojure "1.7.0-RC1"]
+                 [org.clojure/clojure "1.7.0"]
                  [prismatic/schema "0.4.3"]]
   :plugins [
             ;; TODO: This dependency should go away.
