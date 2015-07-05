@@ -68,10 +68,26 @@ returning a seq of name/instance pairs that probably should have been a map"
         (mapcat (fn [[name ctor-sym]]
                   ;; Called for the side-effects
                   (-> ctor-sym namespace symbol require)
-                  (let [ctor (resolve ctor-sym)
-                        local-options (name config-options)
-                        instance (ctor local-options)]
-                    [name instance]))
+                  (if-let [ctor (resolve ctor-sym)]
+                    (let [
+                        ;; Don't force caller to remember this;
+                        ;; even though it really is a required
+                        ;; part of the protocol/API. Leaving it
+                        ;; off is just begging for errors
+                        local-options (get config-options name {})
+                        instance
+                        (try (ctor local-options)
+                             (catch NullPointerException ex
+                               (let [msg (str ex
+                                              "\nTrying to call ctor "
+                                              ctor-sym
+                                              "\nwith params:\n"
+                                              local-options
+                                              "\nHonestly, this is fatal")]
+                                 (throw (RuntimeException. msg ex)))))]
+                    [name instance])
+                    (throw (RuntimeException. (str "No such constructor:\n"
+                                                   ctor-sym)))))
                 descr)]
     (comment (println "Initialized System:\n"
                 (with-out-str (pprint result))))
