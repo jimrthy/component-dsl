@@ -1,7 +1,7 @@
 (ns component-dsl.system-test
   "Make sure basic assumptions re: System descriptions work"
   (:require [clojure.pprint :refer [pprint]]
-            [clojure.test :refer [deftest is]]
+            [clojure.test :refer [deftest is testing] :as test]
             [com.stuartsierra.component :as component]
             [component-dsl.system :as sys]
             [schema.core :as s]))
@@ -153,5 +153,22 @@ in the project from which this was refactored"
       (finally
         (component/stop world)))
     (is true "Managed to stop without error")))
+
+(deftest schema-extractors
+  []
+  (testing "Minimalist schema loading"
+    (let [descr {'one '[schema-a schema-b]
+                 'two 'schema-a}]
+      (sys/require-schematic-namespaces! descr)
+      (is (= (sys/load-var 'one 'schema-a)
+             {:a s/Int, :b s/Int}))
+      (testing "Schema description merge"
+        ;; The order in which these are returned really is
+        ;; just an implementation detail
+        ;; For now, this approach makes the test quite a bit simpler
+        (is (= (sys/extract-schema descr)
+               [{:a s/Int, :b s/Int}
+                {:z s/Str, :y s/Keyword}
+                {:a s/Str :z s/Int}]))))))
 
 ;;; TODO: Need test(s) for supplying constructor options
