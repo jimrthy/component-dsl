@@ -18,7 +18,7 @@
   []
   ;; This is probably obsolete and should never be used
   (let [description (simple-web-components)]
-    (sys/initialize description {})))
+    (first (sys/initialize description {}))))
 
 (s/defn system-with-dependencies :- com.stuartsierra.component.SystemMap
   "Yes, this is copy/pasted from the verify-dependencies test"
@@ -73,8 +73,10 @@ It should probably just go away."
   "Verify that we can describe and call a basic constructor"
   []
   (let [initialized (initialize-web)]
+    (println "Debugging:\n" initialized
+             "\n***************")
     (is (= :web (first initialized)))
-    (is (= :routes (nth initialized 2)))))
+    (is (= {:routes {}} (nth initialized 1)))))
 
 (deftest verify-dependencies
   "Does the dependency map work the way I think?"

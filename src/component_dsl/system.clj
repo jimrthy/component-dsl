@@ -9,17 +9,21 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Schema
 
-(def system-structure
+(def component-name s/Keyword)
+
+(def component-ctor-id s/Symbol)
+
+(def initialization-map
   "Component 'name' to the namespaced initialization function"
-  {s/Keyword s/Symbol})
+  {component-name component-ctor-id})
 
 (def system-dependencies
   "Component 'name' to a seq of the 'names' of its dependencies"
-  {s/Keyword [s/Keyword]})
+  {component-name [component-name]})
 
 (def system-description
   "Describe the system structure and its dependencies"
-  {:structure system-structure
+  {:structure initialization-map   ; this is a poor naming choice
    :dependencies system-dependencies})
 
 (def named-instances
@@ -40,7 +44,7 @@ TODO: How do I specify that in schema?"
   ;; For flexibility, everything should be legal here.
   ;; But, come on, when would the keys ever be anything except
   ;; keywords?
-  {s/Keyword s/Any})
+  {component-name s/Any})
 
 (def configuration-tree
   "Which parameters get passed to the various constructors?
@@ -56,47 +60,133 @@ declarative and easy, then to merge them into that sort
 of single map in here."
   {s/Keyword option-map})
 
+(def name-space s/Symbol)
+(def schema-name s/Symbol)
+
+(def schema
+    "An individual description
+TODO: Is there schema for describing legal schema anywhere?"
+    s/Any)
+
+(def schemata
+  "Really just so I have a meaningful name to call these things"
+  [schema])
+
+(def schema-description
+    "Really just a map of symbols marking a namespace to
+symbols naming schemata in that namespace"
+    {name-space (s/either schema-name [schema-name])})
+
+(def component-instance-name
+  "TODO: Try redefining ComponentName as this
+  I'm just not sure that'll work in non-sequences
+  (such as when I'm using it as the key in a map)"
+  (s/one s/Keyword "name"))
+(def component-instance (s/one s/Any "instance"))
+(def component [component-instance-name component-instance])
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Internals
 
-(s/defn ^:always-validate initialize :- s/Any  ; named-instances...this is tricky
+(s/defn load-var :- s/Any
+  "Get the value of var inside namespace"
+  [namespace :- name-space
+   var-name :- s/Symbol]
+  (let [sym (symbol (str namespace "/" var-name))]
+    (try
+      (eval sym)
+      (catch RuntimeException ex
+        ;; Logger isn't initialized yet
+
+        (throw (ex-info
+                (str "Loading" var-name "from" namespace "failed")
+                {:problem var-name
+                :reason ex}))))))
+
+(s/defn require-schematic-namespaces!
+  "Makes sure all the namespaces where the schemata
+are found are available, so we can access the schemata"
+  [d :- schema-description]
+  (dorun (map require (keys d))))
+
+(comment
+  (mapcat (fn [[k v]]
+            (println "Extracting" v "from ns" k)
+            (if (symbol? v)
+              (load-var k v)
+              (mapcat (partial load-var k) v)))
+          {'one '[schema-a schema-b]
+           'two 'schema-a}))
+
+(s/defn extract-schema :- schemata
+  "Returns a seq of the values of the vars in each namespace"
+  [d :- schema-description]
+  (mapcat (fn [[k v]]
+         (if (symbol? v)
+           [(load-var k v)]
+           (map (partial load-var k) v)))
+       d))
+
+(s/defn translate-schematics! :- schemata
+  "require the namespace and load the schema specified in each.
+
+N.B. Doesn't even think about trying to be java friendly. No defrecord!"
+  [d :- schema-description]
+  (require-schematic-namespaces! d)
+  (extract-schema d))
+
+;;; FIXME: Comment rot. I've already exchanged mapcat for map
+;;; This actually returns a sequence of the pairs that form a Component.
+;;; So something like (concat [ComponentInstanceName ComponentInstance] ...)
+;;; Q: How can I specify that?
+;;; Q: Would it be better to use map instead of mapcat to build this
+;;; sequence, then concat it before I actually use it?
+(s/defn ^:always-validate initialize :- [component]
   "require the individual namespaces and call each Component's constructor,
 returning a seq of name/instance pairs that probably should have been a map"
-  [descr :- system-structure
+  [descr :- initialization-map
    config-options :- configuration-tree]
   (let [result
-        (mapcat (fn [[name ctor-sym]]
-                  ;; Called for the side-effects
-                  (-> ctor-sym namespace symbol require)
-                  (if-let [ctor (resolve ctor-sym)]
-                    (let [
-                        ;; Don't force caller to remember this;
-                        ;; even though it really is a required
-                        ;; part of the protocol/API. Leaving it
-                        ;; off is just begging for errors
-                        local-options (get config-options name {})
-                        instance
-                        (try (ctor local-options)
-                             (catch NullPointerException ex
-                               (let [msg (str ex
-                                              "\nTrying to call ctor "
-                                              ctor-sym
-                                              "\nwith params:\n"
-                                              local-options
-                                              "\nHonestly, this is fatal")]
-                                 (throw (RuntimeException. msg ex)))))]
-                    [name instance])
-                    (throw (RuntimeException. (str "No such constructor:\n"
-                                                   ctor-sym)))))
-                descr)]
+        (map (fn [[name ctor-sym]]
+               ;; Called for the side-effects
+               ;; This should have been taken care of below,
+               ;; in the call to require-schematic-namespaces!
+               ;; But better safe than sorry.
+               ;; TODO: Trust the original require-schematic-namespaces!
+               ;; for this step. Really
+               ;; don't want to put this sort of side-effect in
+               ;; the middle of a big nasty function like this.
+               (-> ctor-sym namespace symbol require)
+               (if-let [ctor (resolve ctor-sym)]
+                 (let [
+                       ;; Don't force caller to remember this;
+                       ;; even though it really is a required
+                       ;; part of the protocol/API. Leaving it
+                       ;; off is just begging for errors
+                       local-options (get config-options name {})
+                       instance
+                       (try (ctor local-options)
+                            (catch NullPointerException ex
+                              (let [msg (str ex
+                                             "\nTrying to call ctor "
+                                             ctor-sym
+                                             "\nwith params:\n"
+                                             local-options
+                                             "\nHonestly, this is fatal")]
+                                (throw (RuntimeException. msg ex)))))]
+                   [name instance])
+                 (throw (RuntimeException. (str "No such constructor:\n"
+                                                ctor-sym)))))
+             descr)]
     (comment (println "Initialized System:\n"
-                (with-out-str (pprint result))))
+                      (with-out-str (pprint result))))
     result))
 
 (s/defn ^:always-validate system-map :- SystemMap
-  [descr :- system-structure
+  [descr :- initialization-map
    config-options :- configuration-tree]
-  (let [inited (initialize descr config-options)]
+  (let [inited-pairs (initialize descr config-options)
+        inited (apply concat inited-pairs)]
     (apply component/system-map inited)))
 
 (s/defn ^:always-validate load-resource :- s/Any
