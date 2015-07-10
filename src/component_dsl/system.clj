@@ -83,6 +83,9 @@ symbols naming schemata in that namespace"
   (such as when I'm using it as the key in a map)"
   (s/one s/Keyword "name"))
 (def component-instance (s/one s/Any "instance"))
+;; Note that this declaration does not match reality:
+;; This is really just an alternating seq of these pairs,
+;; like a common lisp alist.
 (def component [component-instance-name component-instance])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -99,7 +102,9 @@ symbols naming schemata in that namespace"
         ;; Logger isn't initialized yet
 
         (throw (ex-info
-                (str "Loading" var-name "from" namespace "failed")
+                (str "Loading " var-name " from " namespace
+                     " (which amounts to " sym ") "
+                     " failed")
                 {:problem var-name
                 :reason ex}))))))
 
@@ -117,15 +122,14 @@ are found are available, so we can access the schemata"
               (mapcat (partial load-var k) v)))
           {'one '[schema-a schema-b]
            'two 'schema-a}))
-
 (s/defn extract-schema :- schemata
   "Returns a seq of the values of the vars in each namespace"
   [d :- schema-description]
-  (mapcat (fn [[k v]]
-         (if (symbol? v)
-           [(load-var k v)]
-           (map (partial load-var k) v)))
-       d))
+  (mapcat (fn [[namespace var-name]]
+            (if (symbol? var-name)
+              [(load-var namespace var-name)]
+              (map (partial load-var namespace) var-name)))
+          d))
 
 (s/defn translate-schematics! :- schemata
   "require the namespace and load the schema specified in each.
@@ -135,12 +139,6 @@ N.B. Doesn't even think about trying to be java friendly. No defrecord!"
   (require-schematic-namespaces! d)
   (extract-schema d))
 
-;;; FIXME: Comment rot. I've already exchanged mapcat for map
-;;; This actually returns a sequence of the pairs that form a Component.
-;;; So something like (concat [ComponentInstanceName ComponentInstance] ...)
-;;; Q: How can I specify that?
-;;; Q: Would it be better to use map instead of mapcat to build this
-;;; sequence, then concat it before I actually use it?
 (s/defn ^:always-validate initialize :- [component]
   "require the individual namespaces and call each Component's constructor,
 returning a seq of name/instance pairs that probably should have been a map"
