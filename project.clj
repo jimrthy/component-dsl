@@ -3,7 +3,7 @@
   :url "https://github.com/jimrthy/component-dsl"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[com.stuartsierra/component "0.2.3"]
+  :dependencies [[com.stuartsierra/component "0.3.0"]
                  [org.clojure/clojure "1.7.0"]
                  [prismatic/schema "0.4.3"]]
   :plugins [

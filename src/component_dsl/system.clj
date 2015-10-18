@@ -215,7 +215,9 @@ returning a seq of name/instance pairs that probably should have been a map"
     (dependencies pre-init (:dependencies descr))))
 
 (s/defn ctor :- SystemMap
-  "config-file name needs to point to an EDN file w/ a description map.
+  "Translates an external EDN resource that describes a system into one that's ready to start
+
+config-file name needs to point to an EDN file w/ a description map.
 The :structure is a map of component identifiers to their constructors.
 The :dependencies describes the dependencies among components
 Options is a map of maps that will be supplied to each constructor"
