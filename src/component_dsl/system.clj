@@ -99,8 +99,6 @@ symbols naming schemata in that namespace"
     (try
       (eval sym)
       (catch RuntimeException ex
-        ;; Logger isn't initialized yet
-
         (throw (ex-info
                 (str "Loading " var-name " from " namespace
                      " (which amounts to " sym ") "
@@ -183,9 +181,20 @@ returning a seq of name/instance pairs that probably should have been a map"
 (s/defn ^:always-validate system-map :- SystemMap
   [descr :- initialization-map
    config-options :- configuration-tree]
+  (println "Initializing system\n"
+           (with-out-str (pprint descr))
+           "with options:\n"
+           (with-out-str (pprint config-options)))
   (let [inited-pairs (initialize descr config-options)
-        inited (apply concat inited-pairs)]
-    (apply component/system-map inited)))
+        inited (apply concat inited-pairs)
+        result (apply component/system-map inited)]
+    (println "system-map:\nInited-pairs:\n"
+             (with-out-str (pprint inited-pairs))
+             "initialized:\n"
+             (with-out-str (pprint inited-pairs))
+             "result:\n"
+             (with-out-str (pprint result)))
+    result))
 
 (s/defn ^:always-validate load-resource :- s/Any
   [url :- s/Str]  ; Actually, this should probably accept a URI
@@ -198,10 +207,10 @@ returning a seq of name/instance pairs that probably should have been a map"
   "Add the system's dependency tree"
   [inited :- SystemMap
    descr :- system-dependencies]
-  (comment (log/debug "Preparing to build dependency tree for\n"
-                      (with-out-str (pprint inited))
-                      "based on the dependency description\n"
-                      (with-out-str (pprint descr))))
+  (comment) (println "Preparing to build dependency tree for\n"
+                     (with-out-str (pprint inited))
+                     "based on dependency tree\n"
+                     (with-out-str (pprint descr)))
   (component/system-using inited descr))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -210,7 +219,7 @@ returning a seq of name/instance pairs that probably should have been a map"
 (s/defn build :- SystemMap
   "Returns a System that's ready to start"
   [descr :- system-description
-   options :- option-map]
+   options :- configuration-tree]
   (let [pre-init (system-map (:structure descr) options)]
     (dependencies pre-init (:dependencies descr))))
 
