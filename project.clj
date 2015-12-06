@@ -3,9 +3,9 @@
   :url "https://github.com/jimrthy/component-dsl"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[com.stuartsierra/component "0.3.0"]
-                 [org.clojure/clojure "1.7.0"]
-                 [prismatic/schema "0.4.3"]]
+  :dependencies [[com.stuartsierra/component "0.3.1"]
+                 [org.clojure/clojure "1.8.0-RC3"]
+                 [prismatic/schema "1.0.3"]]
   :plugins [
             ;; TODO: This dependency should go away.
             ;; It's only here because of a screwy interaction
