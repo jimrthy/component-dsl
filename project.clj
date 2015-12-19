@@ -32,10 +32,10 @@
                          ;; Q: Why am I getting errors from that?
                          :optimizations :advanced
                          :pretty-print false}}]}
-  :dependencies [[com.stuartsierra/component "0.3.0"]
+  :dependencies [[com.stuartsierra/component "0.3.1"]
                  [org.clojure/clojure "1.8.0-RC4"]
                  [org.clojure/clojurescript "1.7.170"]
-                 [prismatic/schema "0.4.3"]]
+                 [prismatic/schema "1.0.3"]]
   :description "Describe your Components in EDN"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
