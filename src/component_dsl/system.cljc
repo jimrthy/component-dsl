@@ -2,9 +2,9 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :refer (pprint)]
-            [com.stuartsierra.component :as component]
+            [com.stuartsierra.component :as component #?@(:cljs [:refer SystemMap])]
             [schema.core :as s])
-  (:import [com.stuartsierra.component SystemMap]))
+  #?@(:clj [:import [com.stuartsierra.component SystemMap]]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Schema
