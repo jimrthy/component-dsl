@@ -4,7 +4,8 @@
             [clojure.pprint :refer (pprint)]
             [com.stuartsierra.component :as component #?@(:cljs [:refer SystemMap])]
             [schema.core :as s])
-  #?@(:clj [:import [com.stuartsierra.component SystemMap]]))
+  ;; This next for is broken. Q: What's the matter?
+  #?@(:clj (list :import [com.stuartsierra.component SystemMap])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Schema
