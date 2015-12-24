@@ -2,10 +2,10 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :refer (pprint)]
-            [com.stuartsierra.component :as component #?@(:cljs [:refer SystemMap])]
+            [com.stuartsierra.component :as component #?(:cljs [:refer SystemMap])]
             [schema.core :as s])
-  ;; This next for is broken. Q: What's the matter?
-  #?@(:clj (list :import [com.stuartsierra.component SystemMap])))
+  ;; This next sexp is broken, at least under clojure. Q: What's the matter?
+  #?(:clj (:import [com.stuartsierra.component SystemMap])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Schema

@@ -45,6 +45,6 @@
             ;; with cider dependencies
             ;; At the very least, it only belongs under
             ;; the dev profile
-            [org.clojure/java.classpath "0.2.2"]]
+            #_[org.clojure/java.classpath "0.2.3"]]
   :source-paths ["dev" "src"]
   :url "https://github.com/jimrthy/component-dsl")
