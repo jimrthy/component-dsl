@@ -1,10 +1,9 @@
 (ns component-dsl.system
-  (:require [clojure.edn :as edn]
-            [clojure.java.io :as io]
-            [clojure.pprint :refer (pprint)]
-            [com.stuartsierra.component :as component #?(:cljs [:refer SystemMap])]
+  (:require [#?(:clj clojure.edn) #?(:cljs cljs.reader) :as edn]
+            #_[clojure.java.io :as io]
+            [#?(:clj clojure.pprint) #?(:cljs cljs.pprint) :refer (pprint)]
+            [com.stuartsierra.component :as component #?@(:cljs [:refer [SystemMap]])]
             [schema.core :as s])
-  ;; This next sexp is broken, at least under clojure. Q: What's the matter?
   #?(:clj (:import [com.stuartsierra.component SystemMap])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -99,7 +98,7 @@ symbols naming schemata in that namespace"
   (let [sym (symbol (str namespace "/" var-name))]
     (try
       (eval sym)
-      (catch RuntimeException ex
+      (catch #?(:clj RuntimeException) #?(:cljs :default) ex
         (throw (ex-info
                 (str "Loading " var-name " from " namespace
                      " (which amounts to " sym ") "
@@ -170,10 +169,10 @@ returning a seq of name/instance pairs that probably should have been a map"
                                              "\nwith params:\n"
                                              local-options
                                              "\nHonestly, this is fatal")]
-                                (throw (RuntimeException. msg ex)))))]
+                                (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) msg ex)))))]
                    [name instance])
-                 (throw (RuntimeException. (str "No such constructor:\n"
-                                                ctor-sym)))))
+                 (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) (str "No such constructor:\n"
+                                                                             ctor-sym)))))
              descr)]
     (comment (println "Initialized System:\n"
                       (with-out-str (pprint result))))
@@ -197,12 +196,16 @@ returning a seq of name/instance pairs that probably should have been a map"
              (with-out-str (pprint result)))
     result))
 
-(s/defn ^:always-validate load-resource :- s/Any
-  [url :- s/Str]  ; Actually, this should probably accept a URI
-  (-> url
-      clojure.java.io/resource
-      slurp
-      edn/read-string))
+(#?(:clj (s/defn ^:always-validate load-resource :- s/Any
+           [url :- s/Str] ; Actually, this should probably accept a URI
+           (-> url
+               clojure.java.io/resource
+               slurp
+               edn/read-string))))
+
+(#?(:cljs (s/defn ^:always-validate load-resource :- s/Any
+            [url :- s/Str]
+            (throw (ex-info "This really should work" {})))))
 
 (s/defn dependencies :- SystemMap
   "Add the system's dependency tree"
