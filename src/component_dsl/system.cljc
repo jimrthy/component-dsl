@@ -3,6 +3,7 @@
             #_[clojure.java.io :as io]
             [#?(:clj clojure.pprint) #?(:cljs cljs.pprint) :refer (pprint)]
             [com.stuartsierra.component :as component #?@(:cljs [:refer [SystemMap]])]
+            [component-dsl.management :as mgt]
             [schema.core :as s])
   #?(:clj (:import [com.stuartsierra.component SystemMap])))
 
@@ -97,7 +98,9 @@ symbols naming schemata in that namespace"
    var-name :- s/Symbol]
   (let [sym (symbol (str namespace "/" var-name))]
     (try
-      (eval sym)
+      ;; TODO: This is *totally* not cross-platform
+      #?(:clj (eval sym))
+      #?(:cljs (throw (ex-info "eval *is* available; it's just ugly" {})))
       (catch #?(:clj RuntimeException) #?(:cljs :default) ex
         (throw (ex-info
                 (str "Loading " var-name " from " namespace
@@ -110,7 +113,9 @@ symbols naming schemata in that namespace"
   "Makes sure all the namespaces where the schemata
 are found are available, so we can access the schemata"
   [d :- schema-description]
-  (dorun (map require (keys d))))
+  (dorun (map #?(:clj require)
+              #?(:cljs (throw (ex-info "This exists now; just need the will to use it" {})))
+              (keys d))))
 
 (comment
   (mapcat (fn [[k v]]
@@ -152,8 +157,8 @@ returning a seq of name/instance pairs that probably should have been a map"
                ;; for this step. Really
                ;; don't want to put this sort of side-effect in
                ;; the middle of a big nasty function like this.
-               (-> ctor-sym namespace symbol require)
-               (if-let [ctor (resolve ctor-sym)]
+               (->> ctor-sym namespace symbol #?(:clj require) #?(:cljs (throw (ex-info "That exists. Use it" {}))))
+               (if-let [ctor (#?(:clj resolve) #?(:cljs (throw (ex-info "This can't possibly work as-is...what's the equivalent?" {}))) ctor-sym)]
                  (let [
                        ;; Don't force caller to remember this;
                        ;; even though it really is a required
@@ -162,7 +167,9 @@ returning a seq of name/instance pairs that probably should have been a map"
                        local-options (get config-options name {})
                        instance
                        (try (ctor local-options)
-                            (catch NullPointerException ex
+                            (catch #?(:clj NullPointerException)
+                                #?(:cljs :default)  ; Q: What about other platforms?
+                                ex
                               (let [msg (str ex
                                              "\nTrying to call ctor "
                                              ctor-sym
@@ -196,17 +203,6 @@ returning a seq of name/instance pairs that probably should have been a map"
              (with-out-str (pprint result)))
     result))
 
-(#?(:clj (s/defn ^:always-validate load-resource :- s/Any
-           [url :- s/Str] ; Actually, this should probably accept a URI
-           (-> url
-               clojure.java.io/resource
-               slurp
-               edn/read-string))))
-
-(#?(:cljs (s/defn ^:always-validate load-resource :- s/Any
-            [url :- s/Str]
-            (throw (ex-info "This really should work" {})))))
-
 (s/defn dependencies :- SystemMap
   "Add the system's dependency tree"
   [inited :- SystemMap
@@ -239,5 +235,5 @@ Options is a map of maps that will be supplied to each constructor"
   (let [options (if (seq config-options)  ; the way optionals work
                   (first config-options)
                   {})
-        descr (load-resource config-file-name)]
+        descr (mgt/load-resource config-file-name)]
     (build descr options)))
