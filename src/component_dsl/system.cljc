@@ -188,14 +188,14 @@ returning a seq of name/instance pairs that probably should have been a map"
 (s/defn ^:always-validate system-map :- SystemMap
   [descr :- initialization-map
    config-options :- configuration-tree]
-  (println "Initializing system\n"
+  (println "cpt-dsl::system/system-map -- Initializing system\n"
            (with-out-str (pprint descr))
            "with options:\n"
            (with-out-str (pprint config-options)))
   (let [inited-pairs (initialize descr config-options)
         inited (apply concat inited-pairs)
         result (apply component/system-map inited)]
-    (println "system-map:\nInited-pairs:\n"
+    (println "cpt-dsl::system/system-map:\nInited-pairs:\n"
              (with-out-str (pprint inited-pairs))
              "initialized:\n"
              (with-out-str (pprint inited-pairs))
