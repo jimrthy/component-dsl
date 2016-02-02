@@ -1,3 +1,4 @@
 (ns dev
-  (:require [com.stuartsierra.component :as component]
+  (:require [clojure.tools.namespace.repl :refer (refresh)]
+   [com.stuartsierra.component :as component]
             [component-dsl.system :as sys]))

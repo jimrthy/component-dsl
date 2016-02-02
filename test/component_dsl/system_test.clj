@@ -15,8 +15,9 @@
     :routes component-dsl.routes/ctor})
 
 (s/defn initialize-web
+  "Returns the web portion of the System defined by simple-web-components"
   []
-  ;; This is probably obsolete and should never be used
+  ;; This is really pretty cheap and pedantic
   (let [description (simple-web-components)]
     (first (sys/initialize description {}))))
 
@@ -61,10 +62,10 @@ It should probably just go away."
       (let [routes (get web-server :routes :not-found)]
         ;; No routes until we've started...
         ;; but the key is there
-        (is (= {} routes))
+        (is (= :not-found routes))
         ;; I really expected this to return either nil or false
         ;; The key's there. Or, at least, it's getting printed.
-        ;; TODO: Dig deeper into the guts to figure out why Id
+        ;; TODO: Dig deeper into the guts to figure out why I
         ;; don't have what I expect
         (is (= (get web-server :started :not-started) :not-started))))
     (is (nth parameters 3))))
@@ -76,7 +77,7 @@ It should probably just go away."
     (println "Debugging:\n" initialized
              "\n***************")
     (is (= :web (first initialized)))
-    (is (= {:routes {}} (nth initialized 1)))))
+    (is (= {:port 8000, :resource-root "www"} (nth initialized 1)))))
 
 (deftest verify-dependencies
   "Does the dependency map work the way I think?"
@@ -138,6 +139,8 @@ in the project from which this was refactored"
     (is (= (:routes started)
            (-> started :web :routes))
         "System started successfully")
+    (is (= (-> started :web :port) 8000)
+        "Set up default port correctly")
     (component/stop started)))
 
 (deftest realistic
@@ -172,3 +175,18 @@ in the project from which this was refactored"
                 {:a s/Str :z s/Int}]))))))
 
 ;;; TODO: Need test(s) for supplying constructor options
+(deftest construct-with-parameters
+  []
+  (testing "Supply parameters to constructors"
+    (let [descr {:structure (simple-web-components)
+                 :dependencies {:web [:routes]}}
+          inited (sys/build descr {:web {:port 9010
+                                         :resource-root "public"}})
+          started (component/start inited)]
+      (is (= (-> started :web :port)
+             9010)
+          "Assigned port successfully")
+      (is (= (-> started :web :resource-root)
+             "public")
+          "Assigned web root successfully")
+      (component/stop started))))
