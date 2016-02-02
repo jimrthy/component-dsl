@@ -32,7 +32,8 @@
                                         :optimizations :advanced
                                         :pretty-print false}}}}
   :dependencies [[com.stuartsierra/component "0.3.1"]
-                 [org.clojure/clojure "1.8.0-RC4"]
+                 ;; TODO: Eliminate this dependency
+                 [org.clojure/clojure "1.8.0"]
                  [org.clojure/clojurescript "1.7.170"]
                  [prismatic/schema "1.0.3"]]
   :description "Describe your Components in EDN"
