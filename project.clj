@@ -34,6 +34,8 @@
   :dependencies [[com.stuartsierra/component "0.3.1"]
                  ;; TODO: Eliminate this dependency
                  [org.clojure/clojure "1.8.0"]
+                 ;; Q: Can this one go away?
+                 ;; It pretty definitely needs to be updated.
                  [org.clojure/clojurescript "1.7.170"]
                  [prismatic/schema "1.0.4"]]
   :description "Describe your Components in EDN"

@@ -25,6 +25,10 @@
 (def system-description
   "Describe the system structure and its dependencies"
   {:structure initialization-map   ; this is a poor naming choice
+   ;; Very tempting to make this optional
+   ;; It won't be, except for trivial systems.
+   ;; But it's annoying to remember for those.
+   ;; Ah, well. If you're writing something trivial, don't use this.
    :dependencies system-dependencies})
 
 (def named-instances
@@ -229,7 +233,10 @@ returning a seq of name/instance pairs that probably should have been a map"
 config-file name needs to point to an EDN file w/ a description map.
 The :structure is a map of component identifiers to their constructors.
 The :dependencies describes the dependencies among components
-Options is a map of maps that will be supplied to each constructor"
+Options is a map of maps that will be supplied to each constructor
+
+This seemed like a good idea once upon a time, but it's looking more
+and more dubious as I keep moving forward and ignoring it."
   [config-file-name :- s/Str
    & config-options]
   (let [options (if (seq config-options)  ; the way optionals work
