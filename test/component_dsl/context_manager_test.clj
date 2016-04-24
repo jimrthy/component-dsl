@@ -1,4 +1,8 @@
 (ns component-dsl.context-manager-test
+  "Verify that the context-manager works
+and that we can use it to signal the done-manager
+that it's time to close up shop and go home for the
+night"
   (:require [clojure.test :refer [deftest is testing] :as test]
             [component-dsl.context-manager :as ctx]
             [component-dsl.system :as sys]))
@@ -17,10 +21,15 @@
                                 ;; Surely 10 ms is an eternity for this
                                 ;; kind of test
                                 (Thread/sleep 10)
-                                (-> everything :done :done (deliver "woohoo!"))))]
+                                (try
+                                  (-> everything :waiter :done (deliver "woohoo!"))
+                                  (catch Exception ex
+                                    (println "*******************************
+!!!!!!!!!!!!Danger Will Robinson!!!!!!!!!
+*****************************")))))]
       ;; Actually create the context where everything will/should run
       (ctx/setup everything)
       ;; This will wait for the done manager forever
       (ctx/context (fn [system]
-                     (->> everything :done :done deref
+                     (->> system :waiter :done deref
                           (is "woohoo!")))))))
