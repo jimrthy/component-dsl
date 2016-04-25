@@ -14,7 +14,8 @@ intractable problems getting it to restart.
 
 ## Usage
 
-Until I get around to figuring out how to push this to clojars, you'll
+Until I get around to figuring out how to push this to clojars (and getting
+a version that's useful enough to seem worth doing so), you'll
 need to install it manually.
 
 1. Clone this repo
@@ -43,6 +44,28 @@ dependencies:
 Alternatively, put description into an EDN file and use system/ctor instead:
 
     (def ready-to-go (system/ctor "/path/to/description.edn" constructor-options))
+
+I haven't found the second approach very useful, so it hasn't really been
+used much.
+
+## Context Managers
+
+The component-dsl.context-manager namespace has a couple of functions for
+managing where the system lives. Inspired by [5 Faces of Dependency Injection
+in Clojure]
+(http://software-ninja-ninja.blogspot.co.il/2014/04/5-faces-of-depndency-injection-in.html).
+
+Once your System is started, call (context-manager/setup system).
+
+After that, access to the System is "globally" available by calling
+(context-manager/context f arg1 arg2 arg3 ... argN). The context manager
+will call (f system arg1 arg2 arg3 ... argN).
+
+Time will tell whether this is actually a good idea or not. Used judiciously,
+with some sort of notation warning that the function being called is not
+purely functional (which also pollutes all its callers), I think it probably
+makes more sense than the alternative methods I've used to hold the System.
+
 
 ## Afterthoughts
 
