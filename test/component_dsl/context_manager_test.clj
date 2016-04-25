@@ -33,3 +33,18 @@ night"
       (ctx/context (fn [system]
                      (->> system :waiter :done deref
                           (is "woohoo!")))))))
+
+(deftest check-with
+  (let [everything (sys/build {:structure (waiter)
+                               :dependencies {}}
+                              {})]
+    (try
+      ;; Actually create the context where everything will/should run
+      (ctx/setup everything)
+      (let [n 3]
+        (ctx/with-component :waiter
+          [waiter-component n]
+          (testing "Validate basic with-component macro"
+            (is (= (keys waiter-component) [:done])))
+          (testing "Parameter passing"
+            (is (= n 3))))))))

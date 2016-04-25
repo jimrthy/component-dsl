@@ -61,6 +61,24 @@ After that, access to the System is "globally" available by calling
 (context-manager/context f arg1 arg2 arg3 ... argN). The context manager
 will call (f system arg1 arg2 arg3 ... argN).
 
+As a rule of thumb, your component implementations should only be
+operating on their own component (and possibly its dependencies).
+Which means that we/you shouldn't be passing the full system around
+everywhere.
+
+context-manager/with-component is an attempt to alleviate that issue.
+
+Its first parameter is the key to the Component on which you want to
+operate.
+
+Its second parameter is the parameter vector for the the function that
+handles the context callback. The symbols after the first parameter (which
+will receive the component) must already have associated values inside
+the calling scope.
+
+The other parameters are the forms of the function body, wrapped in an
+implicit do.
+
 Time will tell whether this is actually a good idea or not. Used judiciously,
 with some sort of notation warning that the function being called is not
 purely functional (which also pollutes all its callers), I think it probably
