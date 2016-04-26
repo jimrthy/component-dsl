@@ -17,7 +17,18 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
 
-(defn context
+(s/defn ^:always-validate create-context
+  "Sets up a context for invoking functions with a system
+
+@param system
+@return context function that can be called with another function and most of its args
+
+That function will have the system injected as its first parameter"
+  [system :- SystemMap]
+  (fn [f & args]
+    (apply f system args)))
+
+(defn context!
   "Actual run-time pieces that need access to the running system should
   call this with the function they want to call and its associated
   arguments.
@@ -26,29 +37,28 @@
   the first argument.
 
   Well, it well after you actually alter this to make it work.
-"
+
+  Note that this destroys functional purity."
   [f & args]
   (throw (ex-info "System not started"
                   {:problem "Replace this var with one that works"})))
 
-(s/defn setup
-  "This is the part that sets up context. Call it with your started system."
+(s/defn ^:always-validate set-global-context!
+  "This is probably the most controversial part."
   [system :- SystemMap]
-  (alter-var-root (var context)
-                  (fn [_]  ;; does the altering
-                    (fn [f & args]  ;; what it returns now
-                      (apply f system args)))))
+  (alter-var-root (var context!)
+                  (fn [_]
+                    (create-context system))))
 
-(defmacro with-component
-  "Work with a specific component from the system stored in context.
-  Parameters:
-  component: function that finds the Component of the System that interests you.
+(defmacro with-component!
+  "Work with a specific component from the global system context.
+  @param component: function that finds the Component of the System that interests you.
   Usually just a keyword
 
-  parameters: vector of the parameter names that body uses.
+  @param parameters: vector of the parameter names that body uses.
   Your component is first.
 
-  body: single form that will be called w"
+  @param body: single form that will be called w"
   [component
    parameters
    & body]
@@ -62,4 +72,4 @@
     `(let [g# (fn ~all-params
                 (let [~component-param(~component ~component-param)]
                   ~@body))]
-       (context g#  ~@others))))
+       (context! g#  ~@others))))
