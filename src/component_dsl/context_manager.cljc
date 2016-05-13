@@ -47,8 +47,7 @@ That function will have the system injected as its first parameter"
   "This is probably the most controversial part."
   [system :- SystemMap]
   (alter-var-root (var context!)
-                  (fn [_]
-                    (create-context system))))
+                  (constantly (create-context system))))
 
 (defmacro with-component!
   "Work with a specific component from the global system context.

@@ -28,11 +28,11 @@ night"
 !!!!!!!!!!!!Danger Will Robinson!!!!!!!!!
 *****************************")))))]
       ;; Actually create the context where everything will/should run
-      (ctx/setup everything)
+      (ctx/set-global-context! everything)
       ;; This will wait for the done manager forever
-      (ctx/context (fn [system]
-                     (->> system :waiter :done deref
-                          (is "woohoo!")))))))
+      (ctx/context! (fn [system]
+                      (->> system :waiter :done deref
+                           (is "woohoo!")))))))
 
 (deftest check-with
   (let [everything (sys/build {:structure (waiter)
@@ -40,9 +40,9 @@ night"
                               {})]
     (try
       ;; Actually create the context where everything will/should run
-      (ctx/setup everything)
+      (ctx/set-global-context! everything)
       (let [n 3]
-        (ctx/with-component :waiter
+        (ctx/with-component! :waiter
           [waiter-component n]
           (testing "Validate basic with-component macro"
             (is (= (keys waiter-component) [:done])))
