@@ -40,6 +40,11 @@ TODO: How do I specify that in schema?"
    ;; They're really both expecting the same thing.
    ;; To get this right, I think I'd be forced to
    ;; write a custom schema Walker.
+   ;; The trouble is that I really require an alternating pattern:
+   ;; [s/Keyword s/Any...]
+   ;; I can regulate my API to something that fits their patterns, but
+   ;; it would be nice to be explicit about what I'm trying to pass
+   ;; along, if only because I get it wrong so frequently
    #_(s/pair s/Keyword "name" s/Any "instance")
    #_[(s/one s/Keyword "name") (s/one s/Any "instance")]
    ])
@@ -74,7 +79,9 @@ TODO: Is there schema for describing legal schema anywhere?"
     s/Any)
 
 (def schemata
-  "Really just so I have a meaningful name to call these things"
+  "Really just so I have a meaningful name to call these things
+TODO: This name seemed cute, but it means exactly the opposite of
+what I intended (it's the weird singular form rather than the plural)"
   [schema])
 
 (def schema-description
