@@ -36,13 +36,13 @@
                  [org.clojure/clojure "1.8.0"]
                  ;; Q: Can this one go away?
                  ;; It pretty definitely needs to be updated.
-                 [org.clojure/clojurescript "1.7.170"]
+                 [org.clojure/clojurescript "1.8.51"]
                  ;; Including this here is very debatable, but
                  ;; it's a lot safer than schema.
                  ;; Why would you ever use this without namespace?
                  ;; Honestly, I'm surprised that it isn't part of Component.
                  [org.clojure/tools.namespace "0.2.11"]
-                 [prismatic/schema "1.1.0"]]
+                 [prismatic/schema "1.1.1"]]
   :description "Describe your Components in EDN"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
