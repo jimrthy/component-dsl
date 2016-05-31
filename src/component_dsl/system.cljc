@@ -11,6 +11,10 @@
 ;;; Schema
 
 (def component-name s/Keyword)
+(def component-name-map
+  "When a Component's dependency name doesn't match what the System calls it
+Key is what your Component calls it, value is what the System does"
+  {s/Keyword s/Keyword})
 
 (def component-ctor-id s/Symbol)
 
@@ -20,7 +24,9 @@
 
 (def system-dependencies
   "Component 'name' to a seq of the 'names' of its dependencies"
-  {component-name [component-name]})
+  {component-name [(s/conditional
+                    keyword? component-name
+                    map? component-name-map)]})
 
 (def system-description
   "Describe the system structure and its dependencies"
