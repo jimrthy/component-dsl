@@ -227,7 +227,7 @@ returning a seq of name/instance pairs that probably should have been a map"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
 
-(s/defn build :- SystemMap
+(s/defn ^:always-validate build :- SystemMap
   "Returns a System that's ready to start"
   [descr :- system-description
    options :- configuration-tree]
@@ -250,4 +250,8 @@ and more dubious as I keep moving forward and ignoring it."
                   (first config-options)
                   {})
         descr (mgt/load-resource config-file-name)]
-    (build descr options)))
+    (build (dissoc descr :options)
+           ;; Let config file override whatever caller supplies
+           ;; This seems dubious, but it's easier to change a config
+           ;; file than code.
+           (into options (:options descr)))))
