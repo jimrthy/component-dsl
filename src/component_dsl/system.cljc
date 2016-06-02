@@ -24,9 +24,9 @@ Key is what your Component calls it, value is what the System does"
 
 (def system-dependencies
   "Component 'name' to a seq of the 'names' of its dependencies"
-  {component-name [(s/conditional
-                    keyword? component-name
-                    map? component-name-map)]})
+  {component-name (s/conditional
+                   sequential? [component-name]
+                   map? component-name-map)})
 
 (def system-description
   "Describe the system structure and its dependencies"
