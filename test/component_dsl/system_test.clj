@@ -74,8 +74,6 @@ It should probably just go away."
   "Verify that we can describe and call a basic constructor"
   []
   (let [initialized (initialize-web)]
-    (println "Debugging:\n" initialized
-             "\n***************")
     (is (= :web (first initialized)))
     (is (= {:port 8000, :resource-root "www"} (nth initialized 1)))))
 
