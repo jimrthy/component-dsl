@@ -9,6 +9,10 @@
   (require 'dev)
   (in-ns 'dev))
 
+(defn version
+  "Sanity check, just to see where this ns came from"
+  []
+  "com.jimrthy.component.dsl")
 
 ;;; Even though this is a library, and there really isn't anything to start
 (defn go
