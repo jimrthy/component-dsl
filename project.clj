@@ -42,7 +42,7 @@
                  ;; Why would you ever use this without namespace?
                  ;; Honestly, I'm surprised that it isn't part of Component.
                  [org.clojure/tools.namespace "0.2.11"]
-                 [prismatic/schema "1.1.1"]]
+                 [prismatic/schema "1.1.2"]]
   :description "Describe your Components in EDN"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
