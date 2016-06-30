@@ -56,5 +56,6 @@
             ;; At the very least, it only belongs under
             ;; the dev profile
             #_[org.clojure/java.classpath "0.2.3"]]
-  :source-paths ["dev" "src"]
+  :profiles {:dev {:source-paths ["dev"]}}
+  :source-paths ["src"]
   :url "https://github.com/jimrthy/component-dsl")
