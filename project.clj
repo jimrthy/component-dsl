@@ -33,16 +33,19 @@
                                         :pretty-print false}}}}
   :dependencies [[com.stuartsierra/component "0.3.1"]
                  ;; TODO: Eliminate this dependency
+                 ;; Hmm...fairly major conundrum here.
+                 ;; If I upgrade to clojure 1.9, most of the motivation
+                 ;; for using prismatic schema seems to go away.
+                 ;; Or I could try to support both versions, which seems
+                 ;; like a disaster waiting to happen.
                  [org.clojure/clojure "1.8.0"]
-                 ;; Q: Can this one go away?
-                 ;; It pretty definitely needs to be updated.
-                 [org.clojure/clojurescript "1.8.51"]
+                 [org.clojure/clojurescript "1.9.76"]
                  ;; Including this here is very debatable, but
                  ;; it's a lot safer than schema.
                  ;; Why would you ever use this without namespace?
                  ;; Honestly, I'm surprised that it isn't part of Component.
                  [org.clojure/tools.namespace "0.2.11"]
-                 [prismatic/schema "1.1.1"]]
+                 [prismatic/schema "1.1.2"]]
   :description "Describe your Components in EDN"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
