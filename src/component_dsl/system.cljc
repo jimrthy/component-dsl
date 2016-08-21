@@ -2,122 +2,108 @@
   (:require [#?(:clj clojure.edn) #?(:cljs cljs.reader) :as edn]
             #_[clojure.java.io :as io]
             [#?(:clj clojure.pprint) #?(:cljs cljs.pprint) :refer (pprint)]
+            [clojure.spec :as s]
             [com.stuartsierra.component :as component #?@(:cljs [:refer [SystemMap]])]
-            [component-dsl.management :as mgt]
-            [schema.core :as s])
+            [component-dsl.management :as mgt])
   #?(:clj (:import [com.stuartsierra.component SystemMap])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Schema
+;;; Specs
 
-(def component-name s/Keyword)
-(def component-name-map
-  "When a Component's dependency name doesn't match what the System calls it
-Key is what your Component calls it, value is what the System does"
-  {s/Keyword s/Keyword})
+(s/def ::component-name keyword?)
+;; When a Component's dependency name doesn't match what the System calls it
+;; Key is what your Component calls it, value is what the System does
+(s/def ::component-name-map (s/map-of keyword? keyword?))
 
-(def component-ctor-id s/Symbol)
+(s/def component-ctor-id symbol?)
 
-(def initialization-map
-  "Component 'name' to the namespaced initialization function"
-  {component-name component-ctor-id})
+;; Component 'name' to the namespaced initialization function
+(s/def ::initialization-map (s/map-of ::component-name ::component-ctor-id))
 
-(def system-dependencies
-  "Component 'name' to a seq of the 'names' of its dependencies"
-  {component-name (s/conditional
-                   sequential? [component-name]
-                   map? component-name-map)})
+(s/def ::dependency-seq (s/or :seq ::component-name
+                              :map ::component-name-map))
+;; Component 'name' to a seq of the 'names' of its dependencies
+(s/def ::system-dependencies (s/map-of ::component-name ::dependency-seq))
 
-(def system-description
-  "Describe the system structure and its dependencies"
-  {:structure initialization-map   ; this is a poor naming choice
-   ;; Very tempting to make this optional
-   ;; It won't be, except for trivial systems.
-   ;; But it's annoying to remember for those.
-   ;; Ah, well. If you're writing something trivial, don't use this.
-   :dependencies system-dependencies})
+;; Describe the system structure and its dependencies
+(s/def ::system-description (s/keys ::req {::structure ::initialization-map  ; this is a poor naming choice
+                                           ;; Very tempting to make this optional
+                                           ;; It won't be, except for trivial systems.
+                                           ;; But it's annoying to remember for those.
+                                           ;; Ah, well. If you're writing something trivial, don't use this.
+                                           ::dependencies ::system-dependencies}))
 
-(def named-instances
-  "key-value pairs that are suitable for passing to dependencies
-as the last argument of apply.
+;; key-value pairs that are suitable for passing to dependencies
+;; as the last argument of apply.
+(s/def ::named-instances (s/cat :name keyword?
+                                :instance identity))
 
-TODO: How do I specify that in schema?"
-  [;; Neither of these options work.
-   ;; They're really both expecting the same thing.
-   ;; To get this right, I think I'd be forced to
-   ;; write a custom schema Walker.
-   ;; The trouble is that I really require an alternating pattern:
-   ;; [s/Keyword s/Any...]
-   ;; I can regulate my API to something that fits their patterns, but
-   ;; it would be nice to be explicit about what I'm trying to pass
-   ;; along, if only because I get it wrong so frequently
-   #_(s/pair s/Keyword "name" s/Any "instance")
-   #_[(s/one s/Keyword "name") (s/one s/Any "instance")]
-   ])
+;; The options to supply to each component when it's constructed
+;; For flexibility, everything should be legal here.
+;; But, come on, when would the keys ever be anything except
+;; keywords?
+(s/def ::option-map (s/map-of ::component-name identity))
 
-(def option-map
-  "The options to supply to each component when it's constructed"
-  ;; For flexibility, everything should be legal here.
-  ;; But, come on, when would the keys ever be anything except
-  ;; keywords?
-  {component-name s/Any})
+;; Which parameters get passed to the various constructors?
+;;
+;; The keys are the corresponding names of each Component.
+;;
+;; This seems like a silly approach...why not just describe
+;; each Component, include its constructor and associated args,
+;; and its dependencies altogether?
+;;
+;; The entire point is really to make all those details
+;; declarative and easy, then to merge them into that sort
+;; of single map in here.
+(s/def ::configuration-tree (s/map-of keyword? ::option-map))
 
-(def configuration-tree
-  "Which parameters get passed to the various constructors?
+(s/def ::name-space symbol?)
+(s/def ::schema-name symbol?)
 
-The keys are the corresponding names of each Component.
+;; An individual description
+;; TODO: Is there schema for describing legal schema anywhere?
+;; Q: Where is this actually used?
+(s/def ::schema (s/nilable identity))
 
-This seems like a silly approach...why not just describe
-each Component, include its constructor and associated args,
-and its dependencies altogether?
+;; Really just so I have a meaningful name to call these things
+;; TODO: This name seemed cute, but it means exactly the opposite of
+;; what I intended (it's the weird singular form rather than the plural)
+(s/def ::schemata
+  (s/coll-of ::schema))
 
-The entire point is really to make all those details
-declarative and easy, then to merge them into that sort
-of single map in here."
-  {s/Keyword option-map})
+;; Really just a map of symbols marking a namespace to
+;; symbols naming schemata in that namespace
+(s/def ::schema-description
+  (s/map-of ::name-space (s/or :single ::schema-name
+                               :seq (s/coll-of ::schema-name))))
 
-(def name-space s/Symbol)
-(def schema-name s/Symbol)
+;; TODO: Try redefining ComponentName as this
+;; I'm just not sure that'll work in non-sequences
+;; (such as when I'm using it as the key in a map)
+(s/def ::component-instance-name
+  keyword?)
+;; Tempting to make this nilable, but it isn't.
+(s/def ::component-instance identity)
+(s/def ::component (s/cat ::component-instance-name ::component-instance))
 
-(def schema
-    "An individual description
-TODO: Is there schema for describing legal schema anywhere?"
-    s/Any)
-
-(def schemata
-  "Really just so I have a meaningful name to call these things
-TODO: This name seemed cute, but it means exactly the opposite of
-what I intended (it's the weird singular form rather than the plural)"
-  [schema])
-
-(def schema-description
-    "Really just a map of symbols marking a namespace to
-symbols naming schemata in that namespace"
-    {name-space (s/either schema-name [schema-name])})
-
-(def component-instance-name
-  "TODO: Try redefining ComponentName as this
-  I'm just not sure that'll work in non-sequences
-  (such as when I'm using it as the key in a map)"
-  (s/one s/Keyword "name"))
-(def component-instance (s/one s/Any "instance"))
-;; Note that this declaration does not match reality:
-;; This is really just an alternating seq of these pairs,
-;; like a common lisp alist.
-(def component [component-instance-name component-instance])
+(s/def ::system-map #(instance? SystemMap %))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Internals
 
-(s/defn load-var :- s/Any
+(s/fdef load-var
+        :args (s/cat :namespace ::name-space
+                     :var-name symbol?)
+        :ret (s/nilable identity))
+(defn load-var
   "Get the value of var inside namespace"
-  [namespace :- name-space
-   var-name :- s/Symbol]
+  [namespace var-name]
   (let [sym (symbol (str namespace "/" var-name))]
     (try
       ;; TODO: This is *totally* not cross-platform
       #?(:clj (eval sym))
-      #?(:cljs (throw (ex-info "eval *is* available; it's just ugly" {})))
+      #?(:cljs (throw (ex-info "not implemented"
+                               {:problem "eval *is* available; it's just ugly"})))
       (catch #?(:clj RuntimeException) #?(:cljs :default) ex
         (throw (ex-info
                 (str "Loading " var-name " from " namespace
@@ -126,13 +112,14 @@ symbols naming schemata in that namespace"
                 {:problem var-name
                 :reason ex}))))))
 
-(s/defn require-schematic-namespaces!
-  "Makes sure all the namespaces where the schemata
-are found are available, so we can access the schemata"
-  [d :- schema-description]
+(s/fdef require-schematic-namespaces! :args (s/cat :descr ::schema-description))
+(defn require-schematic-namespaces!
+  "Makes sure all the namespaces where the schema
+are found are available, so we can access the schema"
+  [description]
   (dorun (map #?(:clj require)
               #?(:cljs (throw (ex-info "This exists now; just need the will to use it" {})))
-              (keys d))))
+              (keys description))))
 
 (comment
   (mapcat (fn [[k v]]
@@ -142,28 +129,38 @@ are found are available, so we can access the schemata"
               (mapcat (partial load-var k) v)))
           {'one '[schema-a schema-b]
            'two 'schema-a}))
-(s/defn extract-schema :- schemata
+(s/fdef extract-schema
+        :args (s/cat :descriptions ::schema-description)
+        :ret ::schemata)
+(defn extract-schema
   "Returns a seq of the values of the vars in each namespace"
-  [d :- schema-description]
+  [descriptions]
   (mapcat (fn [[namespace var-name]]
             (if (symbol? var-name)
               [(load-var namespace var-name)]
               (map (partial load-var namespace) var-name)))
-          d))
+          descriptions))
 
-(s/defn translate-schematics! :- schemata
+(s/fdef translate-schematics!
+        :args (s/cat :description ::schema-description)
+        :ret ::schemata)
+(defn translate-schematics!
   "require the namespace and load the schema specified in each.
 
 N.B. Doesn't even think about trying to be java friendly. No defrecord!"
-  [d :- schema-description]
-  (require-schematic-namespaces! d)
-  (extract-schema d))
+  [description]
+  (require-schematic-namespaces! description)
+  (extract-schema description))
 
-(s/defn ^:always-validate initialize :- [component]
+;;; Q: What's the spec equivalent of schema's ^:always-validate?
+(s/fdef initialize
+        :args (s/cat :descr ::initialization-map
+                     :config-options ::configuration-tree)
+        :ret (s/coll-of ::component))
+(defn initialize
   "require the individual namespaces and call each Component's constructor,
 returning a seq of name/instance pairs that probably should have been a map"
-  [descr :- initialization-map
-   config-options :- configuration-tree]
+  [descr config-options]
   (let [result
         (map (fn [[name ctor-sym]]
                ;; Called for the side-effects
@@ -202,9 +199,13 @@ returning a seq of name/instance pairs that probably should have been a map"
                       (with-out-str (pprint result))))
     result))
 
-(s/defn ^:always-validate system-map :- SystemMap
-  [descr :- initialization-map
-   config-options :- configuration-tree]
+;; TODO: This is another to always validate
+(s/fdef system-map
+        :args (s/cat :descr ::initialization-map
+                     :config-options ::configuration-tree)
+        :ret ::system-map)
+(defn system-map
+  [descr config-options]
   (println "cpt-dsl::system/system-map -- Initializing system\n"
            (with-out-str (pprint descr))
            "with options:\n"
@@ -220,10 +221,13 @@ returning a seq of name/instance pairs that probably should have been a map"
              (with-out-str (pprint result)))
     result))
 
-(s/defn dependencies :- SystemMap
+(s/fdef dependencies
+        :args (s/cat :inited ::system-map
+                     :descr ::system-dependencies)
+        :ret ::system-map)
+(defn dependencies
   "Add the system's dependency tree"
-  [inited :- SystemMap
-   descr :- system-dependencies]
+  [inited descr]
   (comment) (println "Preparing to build dependency tree for\n"
                      (with-out-str (pprint inited))
                      "based on dependency tree\n"
@@ -233,14 +237,22 @@ returning a seq of name/instance pairs that probably should have been a map"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
 
-(s/defn ^:always-validate build :- SystemMap
+;; TODO: ^:always-validate
+(s/fdef build
+        :args (s/cat :descr ::system-description
+                     :options ::configuration-tree)
+        :ret ::system-map)
+(defn  build
   "Returns a System that's ready to start"
-  [descr :- system-description
-   options :- configuration-tree]
+  [descr options]
   (let [pre-init (system-map (:structure descr) options)]
     (dependencies pre-init (:dependencies descr))))
 
-(s/defn ctor :- SystemMap
+(s/fdef ctor
+        :args (s/cat :config-file-name string?
+                     :config-options ::configuration-tree)
+        :ret ::system-map)
+(defn ctor
   "Translates an external EDN resource that describes a system into one that's ready to start
 
 config-file name needs to point to an EDN file w/ a description map.
@@ -250,7 +262,7 @@ Options is a map of maps that will be supplied to each constructor
 
 This seemed like a good idea once upon a time, but it's looking more
 and more dubious as I keep moving forward and ignoring it."
-  [config-file-name :- s/Str
+  [config-file-name
    & config-options]
   (let [options (if (seq config-options)  ; the way optionals work
                   (first config-options)

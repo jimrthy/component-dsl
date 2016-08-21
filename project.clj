@@ -1,6 +1,6 @@
 (defproject com.jimrthy/component-dsl "0.1.1-SNAPSHOT"
   :cljsbuild {
-              :builds {:dev {:figwheel {:websocket-host "10.0.3.152"}
+              :builds {:dev {:figwheel {:websocket-host "10.0.3.152"}  ; real reason I need port-forwarding for wormtail
                              :source-paths ["src/cljs" "dev_src/cljs"]
                              ;; Different output targets should go to different paths
                              ;; Should probably have a different index.?.html based on build
@@ -38,7 +38,7 @@
                  ;; for using prismatic schema seems to go away.
                  ;; Or I could try to support both versions, which seems
                  ;; like a disaster waiting to happen.
-                 [org.clojure/clojure "1.8.0"]
+                 [org.clojure/clojure "1.9.0-alpha10"]
                  [org.clojure/clojurescript "1.9.76"]
                  ;; Including this here is very debatable, but
                  ;; it's a lot safer than schema.
