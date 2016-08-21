@@ -41,12 +41,10 @@
                  [org.clojure/clojure "1.9.0-alpha10"]
                  [org.clojure/clojurescript "1.9.225"]
                  [org.clojure/test.check "0.9.0"]
-                 ;; Including this here is very debatable, but
-                 ;; it's a lot safer than schema.
+                 ;; Including this here is very debatable.
                  ;; Why would you ever use this without namespace?
                  ;; Honestly, I'm surprised that it isn't part of Component.
-                 [org.clojure/tools.namespace "0.2.11"]
-                 [prismatic/schema "1.1.2"]]
+                 [org.clojure/tools.namespace "0.2.11"]]
   :description "Describe your Components in EDN"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}

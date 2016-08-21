@@ -35,6 +35,7 @@
 
 ;; key-value pairs that are suitable for passing to dependencies
 ;; as the last argument of apply.
+;; TODO: I think I actually want s/alt
 (s/def ::named-instances (s/cat :name keyword?
                                 :instance any?))
 
@@ -58,21 +59,19 @@
 (s/def ::configuration-tree (s/map-of keyword? ::option-map))
 
 (s/def ::name-space symbol?)
-(s/def ::schema-name symbol?)
+(s/def ::schema-name keyword?)
 
 ;; An individual description
-;; TODO: Is there schema for describing legal schema anywhere?
+;; TODO: Is there schema for describing legal specs anywhere?
 ;; Q: Where is this actually used?
-(s/def ::schema any?)
+(s/def ::spec any?)
 
 ;; Really just so I have a meaningful name to call these things
-;; TODO: This name seemed cute, but it means exactly the opposite of
-;; what I intended (it's the weird singular form rather than the plural)
-(s/def ::schemata
-  (s/coll-of ::schema))
+(s/def ::specs
+  (s/coll-of ::spec))
 
 ;; Really just a map of symbols marking a namespace to
-;; symbols naming schemata in that namespace
+;; keywords naming specs in that namespace
 (s/def ::schema-description
   (s/map-of ::name-space (s/or :single ::schema-name
                                :seq (s/coll-of ::schema-name))))
@@ -113,11 +112,11 @@
 
 (s/fdef require-schematic-namespaces! :args (s/cat :descr ::schema-description))
 (defn require-schematic-namespaces!
-  "Makes sure all the namespaces where the schema
-are found are available, so we can access the schema"
+  "Makes sure all the namespaces where the specs
+are found are available, so we can access the specs"
   [description]
   (dorun (map #?(:clj require)
-              #?(:cljs (throw (ex-info "This exists now; just need the will to use it" {})))
+              #?(:cljs (throw (ex-info "This exists now; just need the will to use it" {:missing %})))
               (keys description))))
 
 (comment
@@ -130,8 +129,8 @@ are found are available, so we can access the schema"
            'two 'schema-a}))
 (s/fdef extract-schema
         :args (s/cat :descriptions ::schema-description)
-        :ret ::schemata)
-(defn extract-schema
+        :ret ::specs)
+(defn extract-var-values
   "Returns a seq of the values of the vars in each namespace"
   [descriptions]
   (mapcat (fn [[namespace var-name]]
@@ -142,14 +141,16 @@ are found are available, so we can access the schema"
 
 (s/fdef translate-schematics!
         :args (s/cat :description ::schema-description)
-        :ret ::schemata)
+        :ret ::specs)
 (defn translate-schematics!
-  "require the namespace and load the schema specified in each.
+  "require the namespace and load the vars specified in each.
 
-N.B. Doesn't even think about trying to be java friendly. No defrecord!"
+  N.B. Doesn't even think about trying to be java friendly. No defrecord!
+
+  Q: Is there any point to this?"
   [description]
   (require-schematic-namespaces! description)
-  (extract-schema description))
+  (extract-var-values description))
 
 ;;; Q: What's the spec equivalent of schema's ^:always-validate?
 (s/fdef initialize

@@ -1,8 +1,14 @@
 (ns one
   "Basic schema to test loading them"
-  (:require [schema.core :as s]))
+  (:require [clojure.spec :as s]))
 
-(def schema-a {:a s/Int, :b s/Int})
-(def schema-b {:z s/Str, :y s/Keyword})
+(s/def ::a int?)
+(s/def ::b int?)
+(s/def ::schema-a (s/keys :req [::a ::b]))
 
+(s/def ::y keyword?)
+(s/def ::z string?)
+(s/def ::schema-b (s/keys :req [::y ::z]))
 
+(def for-checking-var-extraction "from ns one")
+(def also "also from ns one")

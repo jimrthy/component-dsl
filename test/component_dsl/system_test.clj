@@ -1,10 +1,10 @@
 (ns component-dsl.system-test
   "Make sure basic assumptions re: System descriptions work"
   (:require [clojure.pprint :refer [pprint]]
+            [clojure.spec :as s]
             [clojure.test :refer [deftest is testing] :as test]
             [com.stuartsierra.component :as component]
-            [component-dsl.system :as sys]
-            [schema.core :as s]))
+            [component-dsl.system :as sys]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Helpers
@@ -14,14 +14,16 @@
   '{:web component-dsl.core/ctor
     :routes component-dsl.routes/ctor})
 
-(s/defn initialize-web
+(defn initialize-web
   "Returns the web portion of the System defined by simple-web-components"
   []
   ;; This is really pretty cheap and pedantic
   (let [description (simple-web-components)]
     (first (sys/initialize description {}))))
 
-(s/defn system-with-dependencies :- com.stuartsierra.component.SystemMap
+(s/fdef system-with-dependencies
+        :ret :component-dsl.system/system-map)
+(defn system-with-dependencies
   "Yes, this is copy/pasted from the verify-dependencies test"
   []
   (let [initialized (sys/system-map (simple-web-components) {})
@@ -158,19 +160,32 @@ in the project from which this was refactored"
 (deftest schema-extractors
   []
   (testing "Minimalist schema loading"
-    (let [descr {'one '[schema-a schema-b]
-                 'two 'schema-a}]
+    (let [descr '{one [for-checking-var-extraction also]
+                  two for-checking-var-extraction}]
       (sys/require-schematic-namespaces! descr)
-      (is (= (sys/load-var 'one 'schema-a)
-             {:a s/Int, :b s/Int}))
+      ;; TODO: Still need a test for load-var
+      (comment
+        (is (= (sys/load-var 'one :schema-a)
+               {:a s/Int, :b s/Int})))
+      (let [x {:one/a 1 :one/b 2}]
+        (is (= (s/conform :one/schema-a x) x))
+        ;; Note that this just silently ignores the extra key
+        (let [extended (assoc x :one/c "bad")]
+          (is (= extended
+               (s/conform :one/schema-a extended))))
+        (is (= (s/conform :one/schema-a (dissoc x :one/b))
+               :clojure.spec/invalid)))
       (testing "Schema description merge"
-        ;; The order in which these are returned really is
-        ;; just an implementation detail
-        ;; For now, this approach makes the test quite a bit simpler
-        (is (= (sys/extract-schema descr)
-               [{:a s/Int, :b s/Int}
-                {:z s/Str, :y s/Keyword}
-                {:a s/Str :z s/Int}]))))))
+        (is (every? #{"from ns one"
+                      "also from ns one"
+                      "from ns two"}
+                    (sys/extract-var-values descr)))))))
+
+(comment
+  (require '[one])
+  (let [x {:one/a 1 :one/b 2 :one/c "bad"}]
+    (s/conform :one/schema-a x))
+  )
 
 ;;; TODO: Need test(s) for supplying constructor options
 (deftest construct-with-parameters
