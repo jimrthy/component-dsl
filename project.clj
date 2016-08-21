@@ -1,4 +1,4 @@
-(defproject com.jimrthy/component-dsl "0.1.1"
+(defproject com.jimrthy/component-dsl "0.1.2-SNAPSHOT"
   :cljsbuild {
               :builds {:dev {:figwheel {:websocket-host "10.0.3.152"}  ; real reason I need port-forwarding for wormtail
                              :source-paths ["src/cljs" "dev_src/cljs"]
