@@ -36,13 +36,13 @@
 ;; key-value pairs that are suitable for passing to dependencies
 ;; as the last argument of apply.
 (s/def ::named-instances (s/cat :name keyword?
-                                :instance identity))
+                                :instance any?))
 
 ;; The options to supply to each component when it's constructed
 ;; For flexibility, everything should be legal here.
 ;; But, come on, when would the keys ever be anything except
 ;; keywords?
-(s/def ::option-map (s/map-of ::component-name identity))
+(s/def ::option-map (s/map-of ::component-name any?))
 
 ;; Which parameters get passed to the various constructors?
 ;;
@@ -63,7 +63,7 @@
 ;; An individual description
 ;; TODO: Is there schema for describing legal schema anywhere?
 ;; Q: Where is this actually used?
-(s/def ::schema (s/nilable identity))
+(s/def ::schema any?)
 
 ;; Really just so I have a meaningful name to call these things
 ;; TODO: This name seemed cute, but it means exactly the opposite of
@@ -82,8 +82,7 @@
 ;; (such as when I'm using it as the key in a map)
 (s/def ::component-instance-name
   keyword?)
-;; Tempting to make this nilable, but it isn't.
-(s/def ::component-instance identity)
+(s/def ::component-instance any?)
 (s/def ::component (s/cat ::component-instance-name ::component-instance))
 
 (s/def ::system-map #(instance? SystemMap %))
@@ -94,7 +93,7 @@
 (s/fdef load-var
         :args (s/cat :namespace ::name-space
                      :var-name symbol?)
-        :ret (s/nilable identity))
+        :ret (s/nilable any?))
 (defn load-var
   "Get the value of var inside namespace"
   [namespace var-name]

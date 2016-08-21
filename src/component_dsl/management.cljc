@@ -1,9 +1,14 @@
 (ns component-dsl.management
   (:require [clojure.edn :as edn]
-            [schema.core :as s]))
+            [clojure.spec :as s]))
 
-(s/defn ^:always-validate load-resource :- s/Any
-  [url :- s/Str] ; Actually, this should probably accept a URI
+;; TODO: ^:always-validate
+(s/fdef load-resource
+        ;; Actually, this should probably accept a URI instance
+        :args (s/cat :url string?)
+        :ret any?)
+(defn load-resource
+  [url]
   (-> url
       clojure.java.io/resource
       slurp

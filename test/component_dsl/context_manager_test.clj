@@ -42,9 +42,22 @@ night"
       ;; Actually create the context where everything will/should run
       (ctx/set-global-context! everything)
       (let [n 3]
-        (ctx/with-component! :waiter
-          [waiter-component n]
-          (testing "Validate basic with-component macro"
-            (is (= (keys waiter-component) [:done])))
-          (testing "Parameter passing"
-            (is (= n 3))))))))
+        (testing "Validate basic with-component macro"
+          (ctx/with-component! :waiter
+            [waiter-component n]
+            ;; Q: How on earth is this passing?!
+            (is (= [:done] (keys waiter-component)))
+            (testing "Parameter passing"
+              (is (= n 3)))))))))
+
+(comment
+  (macroexpand-1 '(ctx/with-component! :waiter
+                    [waiter-component n]
+                    (is (= (keys waiter-component) [:done]))
+                    (testing "Parameter passing"
+                      (is (= n 3)))))
+  (clojure.core/let [g__18459__auto__ (clojure.core/fn [waiter-component n]
+                                        (clojure.core/let [waiter-component (:waiter waiter-component)]
+                                          (is (= (keys waiter-component) [:done]))
+                                          (testing "Parameter passing" (is (= n 3)))))]
+    (component-dsl.context-manager/context! g__18459__auto__ n)))

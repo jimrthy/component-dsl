@@ -10,21 +10,29 @@
   Or it could be in a monadic context, which is the basic idea I'm
   trying to set up here."
   (:require [clojure.pprint :refer (pprint)]
-            [com.stuartsierra.component]
-            [schema.core :as s #?@(:cljs (:include-macros true))])
+            [clojure.spec :as s]
+            [com.stuartsierra.component])
   (:import [com.stuartsierra.component SystemMap]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
 
-(s/defn ^:always-validate create-context
+;; TODO: ^:always-validate
+(s/fdef create-context
+        :args (s/cat :system :component-dsl.system/system-map)
+        :ret (s/fspec :args any?
+                      ;; This seems like an excellent time for the :fn part of the definition.
+                      ;; I'm not sure what I could add that's simpler/easier than the
+                      ;; body, though.
+                      :ret any?))
+(defn create-context
   "Sets up a context for invoking functions with a system
 
 @param system
 @return context function that can be called with another function and most of its args
 
 That function will have the system injected as its first parameter"
-  [system :- SystemMap]
+  [system]
   (fn [f & args]
     (apply f system args)))
 
@@ -38,17 +46,38 @@ That function will have the system injected as its first parameter"
 
   Well, it well after you actually alter this to make it work.
 
+  Create a context by calling create-context, then call set-global-context!
+  on that so you can actually use it through this, without needing to pass
+  it around explicitly.
+
   Note that this destroys functional purity."
   [f & args]
   (throw (ex-info "System not started"
                   {:problem "Replace this var with one that works"})))
 
-(s/defn ^:always-validate set-global-context!
+;; TODO: ^:always-validate
+(s/fdef set-global-context! :args (s/cat :system :component-dsl.system/system-map))
+(defn set-global-context!
   "This is probably the most controversial part."
-  [system :- SystemMap]
+  [system]
   (alter-var-root (var context!)
                   (constantly (create-context system))))
 
+;;; Explaining macros is one of the primary goals behind clojure.spec.
+(s/fdef with-component!
+        :args (s/cat :component (s/fspec :args (s/cat :finder any?)
+                                         ;; This actually returns a Component.
+                                         ;; But we really don't know anything about those,
+                                         ;; except that they're objects that implement Lifecycle
+                                         ;; and something like IAssociative.
+                                         ;; Might be able to narrow this down a bit, but it
+                                         ;; doesn't seem all that valuable.
+                                         :ret any?)
+                     :parameters (s/coll-of simple-symbol?)
+                     ;; TODO: Is it worth the effort to try to spec out body?
+                     ;; Surely this is already done in a ton of existing core macros
+                     :body (s/* any?))
+        :ret any?)
 (defmacro with-component!
   "Work with a specific component from the global system context.
   @param component: function that finds the Component of the System that interests you.
@@ -57,7 +86,9 @@ That function will have the system injected as its first parameter"
   @param parameters: vector of the parameter names that body uses.
   Your component is first.
 
-  @param body: single form that will be called w"
+  @param body: sequence of forms that will be called with the
+  specificed component attached to the symbol that's the first member
+  of parameters"
   [component
    parameters
    & body]
@@ -69,6 +100,12 @@ That function will have the system injected as its first parameter"
         ;; And these do the actual function call
         others (rest all-params)]
     `(let [g# (fn ~all-params
-                (let [~component-param(~component ~component-param)]
+                ;; Q: How can this possibly be correct?
+                ;; Q: Am I actually using this anywhere? Like, say, a unit test?
+                ;; This really seems like it should just be syntactic sugar over
+                ;; context!
+                ;; TODO: Revisit this and figure out what exactly is
+                ;; going on.
+                (let [~component-param (~component ~component-param)]
                   ~@body))]
        (context! g#  ~@others))))
