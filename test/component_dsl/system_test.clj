@@ -14,12 +14,16 @@
   '{:web component-dsl.core/ctor
     :routes component-dsl.routes/ctor})
 
+(defn initialize
+  []
+  (let [description (simple-web-components)]
+    (sys/initialize description {})))
+
 (defn initialize-web
   "Returns the web portion of the System defined by simple-web-components"
   []
   ;; This is really pretty cheap and pedantic
-  (let [description (simple-web-components)]
-    (first (sys/initialize description {}))))
+  (first (initialize)))
 
 (s/fdef system-with-dependencies
         :ret :component-dsl.system/system-map)
@@ -30,8 +34,51 @@
         dependency-description {:web [:routes]}]
     (sys/dependencies initialized dependency-description)))
 
+(defn nested-components
+  []
+  (let [descr {:component-dsl.system/structure '{:database component-dsl.example-db/ctor
+                                                 :schema component-dsl.example-db/schema-builder}
+               :component-dsl.system/dependencies {:schema [:database]}}
+        options {:database {:url "http://database:2020/connection"}
+                 :schema {:definition "http://database/schema.html"}}
+        basic-structure (simple-web-components)]
+    {:description {:component-dsl.system/structure (assoc basic-structure
+                                                          :nested {:component-dsl.system/system-configuration descr
+                                                                   :component-dsl.system/configuration-tree options})
+                   :component-dsl.system/dependencies {:web [:routes]
+                                                       :routes [:database]}}
+     :options {:web {:port 2600
+                     :resource-route "/home/www/public/"}
+               :routes {:handler (fn [_]
+                                   {:code 200
+                                    :body "Hello world"})}}}))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Tests
+
+(deftest check-nested-components
+  (let [descr (nested-components)]
+    (try
+      (let [created (sys/build (:description descr) (:options descr))]
+        ;; Q: What about a predicate to ensure that each entry has a match?
+        (is (= #{:web :routes :database :schema} (set (keys created)))))
+      (catch clojure.lang.ExceptionInfo ex
+        ;; We're failing at this point.
+        ;; Looks like I messed up the recursion.
+        ;; We're getting into system/create-component with a ctor-sym that's a map
+        ;; instead of a symbol.
+        (let [failure-details (.getData ex)]
+          (println "Problem overview:\n" (keys failure-details))
+          (pprint failure-details)
+          ;; Q: What's the easiest way to print the stack trace?
+          (is (not failure-details)))))))
+(comment
+  (let [descr (nested-components)
+        created (sys/build (:description descr) (:options descr))]
+    ;; Q: What about a predicate to ensure that each entry has a match?
+    (keys created)
+    (-> descr :description :component-dsl.system/dependencies))
+  )
 
 (deftest parameter-creation
   "Working out what initialize-web actually needs to do.
@@ -132,16 +179,18 @@ in the project from which this was refactored"
 (deftest really-close
   "For most cases, this approach probably makes the most sense"
   []
-  (let [descr {:structure (simple-web-components)
-               :dependencies {:web [:routes]}}
+  (let [descr {:component-dsl.system/structure (simple-web-components)
+               :component-dsl.system/dependencies {:web [:routes]}}
         inited (sys/build descr {})
         started (component/start inited)]
-    (is (= (:routes started)
-           (-> started :web :routes))
-        "System started successfully")
-    (is (= (-> started :web :port) 8000)
-        "Set up default port correctly")
-    (component/stop started)))
+    (try
+      (is (= (:routes started)
+             (-> started :web :routes))
+          "System started successfully")
+      (is (= (-> started :web :port) 8000)
+          "Set up default port correctly")
+      (finally
+        (component/stop started)))))
 
 (deftest realistic
   "How you probably want to use it"
@@ -191,8 +240,8 @@ in the project from which this was refactored"
 (deftest construct-with-parameters
   []
   (testing "Supply parameters to constructors"
-    (let [descr {:structure (simple-web-components)
-                 :dependencies {:web [:routes]}}
+    (let [descr {:component-dsl.system/structure (simple-web-components)
+                 :component-dsl.system/dependencies {:web [:routes]}}
           inited (sys/build descr {:web {:port 9010
                                          :resource-root "public"}})
           started (component/start inited)]

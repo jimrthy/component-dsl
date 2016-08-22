@@ -14,8 +14,8 @@ night"
 
 (deftest synchronous-run
   (testing "Wait for a system to run"
-    (let [everything (sys/build {:structure (waiter)
-                                 :dependencies {}}
+    (let [everything (sys/build {:component-dsl.system/structure (waiter)
+                                 :component-dsl.system/dependencies {}}
                                 {})
           closer (future-call (fn []
                                 ;; Surely 10 ms is an eternity for this
@@ -25,8 +25,9 @@ night"
                                   (-> everything :waiter :done (deliver "woohoo!"))
                                   (catch Exception ex
                                     (println "*******************************
-!!!!!!!!!!!!Danger Will Robinson!!!!!!!!!
-*****************************")))))]
+!!!!!!!!!!!!Danger Will Robinson!!!!!!!!!\n"
+                                             ex
+                                             "\n*****************************")))))]
       ;; Actually create the context where everything will/should run
       (ctx/set-global-context! everything)
       ;; This will wait for the done manager forever
@@ -35,8 +36,8 @@ night"
                            (is "woohoo!")))))))
 
 (deftest check-with
-  (let [everything (sys/build {:structure (waiter)
-                               :dependencies {}}
+  (let [everything (sys/build {:component-dsl.system/structure (waiter)
+                               :component-dsl.system/dependencies {}}
                               {})]
     (try
       ;; Actually create the context where everything will/should run

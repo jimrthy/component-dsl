@@ -61,7 +61,7 @@
 (s/def ::name-space symbol?)
 (s/def ::schema-name keyword?)
 
-;; An individual description
+;; A spec defining...something.
 ;; TODO: Is there schema for describing legal specs anywhere?
 ;; Q: Where is this actually used?
 (s/def ::spec any?)
@@ -71,7 +71,7 @@
   (s/coll-of ::spec))
 
 ;; Really just a map of symbols marking a namespace to
-;; keywords naming specs in that namespace
+;; keywords naming interesting vars in that namespace
 (s/def ::schema-description
   (s/map-of ::name-space (s/or :single ::schema-name
                                :seq (s/coll-of ::schema-name))))
@@ -81,10 +81,15 @@
 ;; (such as when I'm using it as the key in a map)
 (s/def ::component-instance-name
   keyword?)
-(s/def ::component-instance any?)
+(s/def ::component-instance map?)
+;; This is really a pair of the keyword "name" and the unstarted instance
 (s/def ::component (s/cat ::component-instance-name ::component-instance))
 
+;; Q: Can I get anything more interesting from this?
 (s/def ::system-map #(instance? SystemMap %))
+
+(s/def ::nested-definition (s/keys :req [::system-configuration
+                                         ::configuration-tree]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Internals
@@ -152,6 +157,67 @@ are found are available, so we can access the specs"
   (require-schematic-namespaces! description)
   (extract-var-values description))
 
+(s/fdef build-instances
+        :args (s/cat :name keyword?
+                     :ctor (s/fspec :args (s/cat :options map?)
+                                    :ret (s/coll-of ::component))))
+(declare initialize)
+(defn build-instances
+  [name ctor local-options]
+  (let [instance
+        (try (ctor local-options)
+             (catch #?(:clj NullPointerException)
+                 #?(:cljs :default)  ; Q: What about other platforms?
+                 ex
+                 (let [msg (str ex
+                                "\nTrying to call ctor for "
+                                name
+                                "\nwith params:\n"
+                                local-options
+                                "\nHonestly, this is fatal")]
+                   (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) msg ex)))))]
+    (when (s/valid? ::nested-definition instance)
+      (println "Recursing based on" (keys instance)))
+    (condp s/valid? instance
+      ;; recursion FTW!
+      ::nested-definition (initialize (::description instance) (::options instance))
+      map? [[name instance]])))
+
+(s/fdef create-component
+        :args (s/cat :description (s/cat :name keyword?
+                                         :ctor-sym symbol?)))
+(defn create-component
+  [config-options [name ctor-sym]]
+  ;; Called for the side-effects
+  ;; This should have been taken care of below,
+  ;; in the call to require-schematic-namespaces!
+  ;; But it didn't work.
+  ;; TODO: Make sure require-schematic-namespaces! gets called
+  ;; (and works)
+  ;; for this step. Really
+  ;; don't want to put this sort of side-effect in
+  ;; the middle of a big nasty function like this.
+  (try
+    (->> ctor-sym namespace symbol #?(:clj require) #?(:cljs (throw (ex-info "That exists. Use it" {}))))
+    (catch ClassCastException ex
+      (throw (ex-info "Failed to require the associated namespace symbol"
+                      {:ctor-sym ctor-sym
+                       :component-name name
+                       :config-options config-options}))))
+  (if-let [ctor (#?(:clj resolve)
+                 #?(:cljs
+                    (throw (ex-info "This can't possibly work as-is...what's the equivalent?" {})))
+                 ctor-sym)]
+    (let [
+          ;; Don't force caller to remember this;
+          ;; even though it really is a required
+          ;; part of the protocol/API. Leaving it
+          ;; off is just begging for errors
+          local-options (get config-options name {})]
+      (build-instances name ctor local-options))
+    (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) (str "No such constructor:\n"
+                                                                ctor-sym)))))
+
 ;;; Q: What's the spec equivalent of schema's ^:always-validate?
 (s/fdef initialize
         :args (s/cat :descr ::initialization-map
@@ -162,38 +228,7 @@ are found are available, so we can access the specs"
 returning a seq of name/instance pairs that probably should have been a map"
   [descr config-options]
   (let [result
-        (map (fn [[name ctor-sym]]
-               ;; Called for the side-effects
-               ;; This should have been taken care of below,
-               ;; in the call to require-schematic-namespaces!
-               ;; But better safe than sorry.
-               ;; TODO: Trust the original require-schematic-namespaces!
-               ;; for this step. Really
-               ;; don't want to put this sort of side-effect in
-               ;; the middle of a big nasty function like this.
-               (->> ctor-sym namespace symbol #?(:clj require) #?(:cljs (throw (ex-info "That exists. Use it" {}))))
-               (if-let [ctor (#?(:clj resolve) #?(:cljs (throw (ex-info "This can't possibly work as-is...what's the equivalent?" {}))) ctor-sym)]
-                 (let [
-                       ;; Don't force caller to remember this;
-                       ;; even though it really is a required
-                       ;; part of the protocol/API. Leaving it
-                       ;; off is just begging for errors
-                       local-options (get config-options name {})
-                       instance
-                       (try (ctor local-options)
-                            (catch #?(:clj NullPointerException)
-                                #?(:cljs :default)  ; Q: What about other platforms?
-                                ex
-                              (let [msg (str ex
-                                             "\nTrying to call ctor "
-                                             ctor-sym
-                                             "\nwith params:\n"
-                                             local-options
-                                             "\nHonestly, this is fatal")]
-                                (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) msg ex)))))]
-                   [name instance])
-                 (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) (str "No such constructor:\n"
-                                                                             ctor-sym)))))
+        (mapcat (partial create-component config-options)
              descr)]
     (comment (println "Initialized System:\n"
                       (with-out-str (pprint result))))
@@ -245,8 +280,9 @@ returning a seq of name/instance pairs that probably should have been a map"
 (defn  build
   "Returns a System that's ready to start"
   [descr options]
-  (let [pre-init (system-map (:structure descr) options)]
-    (dependencies pre-init (:dependencies descr))))
+  (println "Building a system from keys" (keys descr))
+  (let [pre-init (system-map (::structure descr) options)]
+    (dependencies pre-init (::dependencies descr))))
 
 (s/fdef ctor
         :args (s/cat :config-file-name string?
