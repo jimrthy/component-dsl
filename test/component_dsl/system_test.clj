@@ -73,11 +73,25 @@
           ;; Q: What's the easiest way to print the stack trace?
           (is (not failure-details)))))))
 (comment
-  (let [descr (nested-components)
-        created (sys/build (:description descr) (:options descr))]
-    ;; Q: What about a predicate to ensure that each entry has a match?
-    (keys created)
-    (-> descr :description :component-dsl.system/dependencies))
+  (let [descr (nested-components)]
+    (try
+      (let [created (sys/build (:description descr) (:options descr))]
+        (try
+          ;; Q: What about a predicate to ensure that each entry has a match?
+          ;; This would almost be an inversion of every?.
+          ;; Surely there's a core function for this.
+          (keys created)
+          (-> descr :description :component-dsl.system/dependencies)
+          (catch clojure.lang.ExceptionInfo ex
+            (println "Failed after building")
+            (println (.getMessage ex))
+            (pprint (.getData ex)))))
+      (catch clojure.lang.ExceptionInfo ex
+        (println "Failed during creation")
+        (println (.getMessage ex))
+        (pprint (.getData ex))
+        ;; Q: How do I print the stack trace?
+        )))
   )
 
 (deftest parameter-creation

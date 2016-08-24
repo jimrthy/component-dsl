@@ -13,9 +13,9 @@
 (s/def ::component-name keyword?)
 ;; When a Component's dependency name doesn't match what the System calls it
 ;; Key is what your Component calls it, value is what the System does
-(s/def ::component-name-map (s/map-of keyword? keyword?))
+(s/def ::component-name-map (s/map-of ::component-name ::component-name))
 
-(s/def component-ctor-id symbol?)
+(s/def ::component-ctor-id symbol?)
 
 ;; Component 'name' to the namespaced initialization function
 (s/def ::initialization-map (s/map-of ::component-name ::component-ctor-id))
@@ -176,17 +176,21 @@ are found are available, so we can access the specs"
                                 local-options
                                 "\nHonestly, this is fatal")]
                    (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) msg ex)))))]
-    (when (s/valid? ::nested-definition instance)
-      (println "Recursing based on" (keys instance)))
+    (if (s/valid? ::nested-definition instance)
+      (do
+        (println "Recursing based on" (keys instance))
+        (throw (ex-info "Should have already handled recursion")))
+      (println "Won't recurse because" name "is at bottom"))
     (condp s/valid? instance
       ;; recursion FTW!
       ::nested-definition (initialize (::description instance) (::options instance))
       map? [[name instance]])))
 
-(s/fdef create-component
-        :args (s/cat :description (s/cat :name keyword?
-                                         :ctor-sym symbol?)))
-(defn create-component
+(s/fdef create-individual-component
+        :args (s/cat :config-options ::configuration-tree
+                     :description (s/cat :name ::component-name
+                                         :ctor-sym ::component-ctor-id)))
+(defn create-individual-component
   [config-options [name ctor-sym]]
   ;; Called for the side-effects
   ;; This should have been taken care of below,
@@ -198,7 +202,14 @@ are found are available, so we can access the specs"
   ;; don't want to put this sort of side-effect in
   ;; the middle of a big nasty function like this.
   (try
-    (->> ctor-sym namespace symbol #?(:clj require) #?(:cljs (throw (ex-info "That exists. Use it" {}))))
+    (let [ns-sym (-> ctor-sym namespace symbol)]
+      (when (= ns-sym 'component-dsl.system)
+        (throw (ex-info "Trying to create component from system ns"
+                        {:problem "Causes a recursive require"
+                         :name name
+                         :ctor-sym ctor-sym
+                         :ns-sym ns-sym})))
+      (#?(:clj require) #?(:cljs (throw (ex-info "That exists. Use it" {}))) ns-sym))
     (catch ClassCastException ex
       (throw (ex-info "Failed to require the associated namespace symbol"
                       {:ctor-sym ctor-sym
@@ -217,6 +228,39 @@ are found are available, so we can access the specs"
       (build-instances name ctor local-options))
     (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) (str "No such constructor:\n"
                                                                 ctor-sym)))))
+
+(s/fdef create-nested-components
+        :args (s/cat :config-options ::configuration-tree
+                     :nested ::nested-definition)
+        ;; Seem like it would be silly for a nested definition to just return
+        ;; one thing.
+        ;; But this could totally happen if the structure was generated
+        ;; programmatically.
+        :ret (s/or :single ::component-instance
+                   :multiple (s/coll-of ::component-instance)))
+(defn create-nested-components
+  [config-options nested]
+  (initialize (-> nested ::system-configuration ::structure)
+              (-> nested ::configuration-tree)))
+
+(s/fdef create-component
+        :args (s/cat :config-options ::configuration-tree
+                     :description (s/cat :name keyword?
+                                         :description (s/or :ctor-sym symbol?
+                                                            :nested ::nested-definition)))
+        :ret (s/or :individual ::component-instance
+                   :multiples (s/coll-of ::component-instance)))
+(defn create-component
+  [config-options definition]
+  ;; Would really be better to just supply the ctor as a function.
+  ;; This approach is a hold-over from the time when I liked the idea of
+  ;; just loading the definitions from EDN.
+  ;; It's really too macro-ish
+  (let [[name ctor-descr] definition]
+    (println "Trying to create component" name "using the constructor" ctor-descr)
+    (if (symbol? ctor-descr)
+      (create-individual-component config-options definition)
+      (create-nested-components config-options ctor-descr))))
 
 ;;; Q: What's the spec equivalent of schema's ^:always-validate?
 (s/fdef initialize
@@ -263,6 +307,7 @@ returning a seq of name/instance pairs that probably should have been a map"
 (defn dependencies
   "Add the system's dependency tree"
   [inited descr]
+  (throw (ex-info "Overly simplified" {:problem "Ignores dependencies from nested components"}))
   (comment) (println "Preparing to build dependency tree for\n"
                      (with-out-str (pprint inited))
                      "based on dependency tree\n"
