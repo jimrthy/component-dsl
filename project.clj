@@ -38,7 +38,7 @@
                  ;; for using prismatic schema seems to go away.
                  ;; Or I could try to support both versions, which seems
                  ;; like a disaster waiting to happen.
-                 [org.clojure/clojure "1.9.0-alpha10"]
+                 [org.clojure/clojure "1.9.0-alpha11"]
                  [org.clojure/clojurescript "1.9.225"]
                  [org.clojure/test.check "0.9.0"]
                  ;; Including this here is very debatable.
