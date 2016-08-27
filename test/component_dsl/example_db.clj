@@ -4,9 +4,9 @@
 (defn ctor
   "Pretend to establish a database connection"
   [options]
-  (throw (ex-info "write this" {})))
+  options)
 
 (defn schema-builder
   "Set up the database's schema"
   [options]
-  (throw (ex-info "write this" {})))
+  (into {:db nil} options))

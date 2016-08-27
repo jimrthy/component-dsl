@@ -56,22 +56,58 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Tests
 
+(deftest check-manually-nested-components
+  (let [nested '#:component-dsl.system{:system-configuration #:component-dsl.system{:structure {:database component-dsl.example-db/ctor,
+                                                                                                :schema component-dsl.example-db/schema-builder},
+                                                                                    :dependencies {:schema [:database]}},
+                                       :configuration-tree {:database {:url "http://database:2020/connection"},
+                                                            :schema {:definition "http://database/schema.html"}}}
+        descr {:description '#:component-dsl.system{:structure {:web component-dsl.core/ctor,
+                                                                :routes component-dsl.routes/ctor,
+                                                                :nested nested},
+                                                    :dependencies {:web [:routes],
+                                                                   :routes [:database]}},
+               :options {:web {:port 2600, :resource-route "/home/www/public/"},
+                         :routes {:handler (fn [_]
+                                             {:code 200
+                                              :body "Hello world"})}}}]
+    (try
+      (let [created (sys/build (:description descr) (:options descr))]
+        ;; Q: What about a predicate to ensure that each entry has a match?
+        (is (= #{:web :routes :database :schema} (set (keys created))))
+        (let [actual-db (:database created)]
+          (is actual-db)
+          (is (= actual-db (-> created :routes :database)))
+          (is (= actual-db (-> created :schema :database)))))
+      (catch clojure.lang.ExceptionInfo ex
+        (println "Failed:" (.getMessage ex))
+        (let [failure-details (.getData ex)]
+          (println "Problem overview:\n" (keys failure-details))
+          (pprint failure-details)
+          (.printStackTrace ex)
+          (is (not ex)))))))
+
+;;; This should really be a duplicate of check-manually-nested-components.
+;;; I'm just being more "clever" about building the actual component tree
+;;; definitions, in an attempt to avoid duplicate code.
+;;; Isn't worth the effort
 (deftest check-nested-components
   (let [descr (nested-components)]
     (try
       (let [created (sys/build (:description descr) (:options descr))]
         ;; Q: What about a predicate to ensure that each entry has a match?
-        (is (= #{:web :routes :database :schema} (set (keys created)))))
+        (is (= #{:web :routes :database :schema} (set (keys created))))
+        (let [actual-db (:database created)]
+          (is actual-db)
+          (is (= actual-db (-> created :routes :database)))
+          (is (= actual-db (-> created :schema :database)))))
       (catch clojure.lang.ExceptionInfo ex
-        ;; We're failing at this point.
-        ;; Looks like I messed up the recursion.
-        ;; We're getting into system/create-component with a ctor-sym that's a map
-        ;; instead of a symbol.
+        (println "Failed:" (.getMessage ex))
         (let [failure-details (.getData ex)]
           (println "Problem overview:\n" (keys failure-details))
           (pprint failure-details)
-          ;; Q: What's the easiest way to print the stack trace?
-          (is (not failure-details)))))))
+          (.printStackTrace ex)
+          (is (not ex)))))))
 (comment
   (let [descr (nested-components)]
     (try
@@ -82,6 +118,7 @@
           ;; Surely there's a core function for this.
           (keys created)
           (-> descr :description :component-dsl.system/dependencies)
+          (-> created :routes keys)
           (catch clojure.lang.ExceptionInfo ex
             (println "Failed after building")
             (println (.getMessage ex))
@@ -90,7 +127,7 @@
         (println "Failed during creation")
         (println (.getMessage ex))
         (pprint (.getData ex))
-        ;; Q: How do I print the stack trace?
+        (.printStackTrace ex)
         )))
   )
 

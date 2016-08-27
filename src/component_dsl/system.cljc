@@ -202,7 +202,10 @@ are found are available, so we can access the specs"
   ;; don't want to put this sort of side-effect in
   ;; the middle of a big nasty function like this.
   (try
-    (let [ns-sym (-> ctor-sym namespace symbol)]
+    (assert ctor-sym)
+    (let [ctor-ns (namespace ctor-sym)
+          _ (assert ctor-ns (str "No namespace associated with " ctor-sym " for Component " name))
+          ns-sym (symbol ctor-ns)]
       (when (= ns-sym 'component-dsl.system)
         (throw (ex-info "Trying to create component from system ns"
                         {:problem "Causes a recursive require"
@@ -257,7 +260,7 @@ are found are available, so we can access the specs"
   ;; just loading the definitions from EDN.
   ;; It's really too macro-ish
   (let [[name ctor-descr] definition]
-    (println "Trying to create component" name "using the constructor" ctor-descr)
+    (println "cpt-dsl.system/create-component: Trying to create component" name "using the constructor" ctor-descr)
     (if (symbol? ctor-descr)
       (create-individual-component config-options definition)
       (create-nested-components config-options ctor-descr))))
@@ -274,8 +277,8 @@ returning a seq of name/instance pairs that probably should have been a map"
   (let [result
         (mapcat (partial create-component config-options)
              descr)]
-    (comment (println "Initialized System:\n"
-                      (with-out-str (pprint result))))
+    (comment) (println "cpt-dsl.system/initialize Initialized System:\n"
+                       (with-out-str (pprint result)))
     result))
 
 ;; TODO: This is another to always validate
@@ -285,14 +288,14 @@ returning a seq of name/instance pairs that probably should have been a map"
         :ret ::system-map)
 (defn system-map
   [descr config-options]
-  (println "cpt-dsl::system/system-map -- Initializing system\n"
+  (println "cpt-dsl.system/system-map -- Initializing system\n"
            (with-out-str (pprint descr))
            "with options:\n"
            (with-out-str (pprint config-options)))
   (let [inited-pairs (initialize descr config-options)
         inited (apply concat inited-pairs)
         result (apply component/system-map inited)]
-    (println "cpt-dsl::system/system-map:\nInited-pairs:\n"
+    (println "cpt-dsl.system/system-map:\nInited-pairs:\n"
              (with-out-str (pprint inited-pairs))
              "initialized:\n"
              (with-out-str (pprint inited-pairs))
@@ -307,7 +310,6 @@ returning a seq of name/instance pairs that probably should have been a map"
 (defn dependencies
   "Add the system's dependency tree"
   [inited descr]
-  (throw (ex-info "Overly simplified" {:problem "Ignores dependencies from nested components"}))
   (comment) (println "Preparing to build dependency tree for\n"
                      (with-out-str (pprint inited))
                      "based on dependency tree\n"
