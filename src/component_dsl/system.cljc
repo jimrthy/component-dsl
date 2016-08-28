@@ -10,7 +10,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Specs
 
-(s/def ::component-name keyword?)
+(s/def ::component-name simple-keyword?)
 
 ;; The options to supply to each component when it's constructed
 ;; For flexibility, everything should be legal here.
@@ -32,7 +32,8 @@
 (s/def ::configuration-tree (s/map-of keyword? ::option-map))
 
 (s/def ::nested-definition (s/keys :req {::system-configuration ::initialization-map
-                                         ::configuration-tree ::configuration-tree}))
+                                         ::configuration-tree ::configuration-tree
+                                         ::primary-component ::component-name}))
 
 ;; When a Component's dependency name doesn't match what the System calls it
 ;; Key is what your Component calls it, value is what the System does
@@ -323,37 +324,69 @@ returning a seq of name/instance pairs that probably should have been a map"
   (component/system-using inited descr))
 
 (s/fdef merge-dependencies
-        :args (s/cat :template ::dependency-seq
-                     :realized ::dependency-seq)
+        :args (s/cat :dependency-template ::dependency-seq
+                     :to-replace ::component-name
+                     :replacement ::component-name)
         :ret ::dependency-seq)
-(defn merge-dependencies
-  [template realized]
+(defn resolve-nested-dependencies
+  "Top-level components can depend on nested, and vice versa
+
+Swap out the place-holders
+
+Like filling the blanks in a form letter"
+  [dependency-template to-replace replacement]
   (throw (ex-info "Start Here" {})))
+
+(s/fdef merge-dependency-trees
+        :args (s/cat :acc ::dependency-seq
+                     :delta ::dependency-seq)
+        :ret ::dependency-seq)
+(defn merge-dependency-trees
+  [acc replacement delta]
+  (throw (ex-info "Start Here" {})))
+
+(s/fdef merge-nested-struct
+        :args (s/cat :root ::initialization-map
+                     :de-nesting ::initialization-map)
+        :ret ::initialization-map)
+(defn merge-nested-struct
+  [root de-nesting]
+  ;; This approach is too brittle, since I can't namespace the component keys
+  ;; (since they're really fields in defrecord instances).
+  ;; TODO: Check for duplicates!
+  (into root de-nesting))
 
 (s/fdef pre-process
         :args (s/cat :description ::system-description)
         :ret ::flattened-description)
 (defn pre-process
-  "Have to flatten out a nested system definition"
+  "Have to flatten out nested system definitions"
   [{:keys [::structure ::dependencies]}]
-  (let [mod-deps-atom (atom dependencies)
-        flattened-structure (reduce (fn [acc [name ctor]]
+  (let [flattened-structure (reduce (fn [{:keys [structure dependencies]
+                                          :as acc}
+                                         [name ctor]]
                                       (if (symbol? ctor)
                                         (do
                                           ;; Baseline unnested case
-                                          (assert (not (contains? acc name)) (str "Duplicate key specified: " name
-                                                                                  "\nExisting: " (get acc name)
-                                                                                  "\nReplacement: " ctor))
-                                          (assoc acc name ctor))
-                                        (let [{:keys [::structure ::dependencies]
+                                          (assert (not (contains? structure name)) (str "Duplicate key specified: " name
+                                                                                        "\nExisting: " (get structure name)
+                                                                                        "\nReplacement: " ctor))
+                                          (assoc-in acc [:structure name] ctor))
+                                        (let [{::primary-component} ctor
+                                              {nested-struct ::structure
+                                               nested-deps ::dependencies
                                                :as de-nested} (pre-process ctor)]
-                                          (doseq [k (keys structure)]
-                                            (assert (not (contains? acc k)) (str "Nested " k "\n - " (get structure k)
-                                                                                 "\ntrying to replace existing constructor " (get acc k))))
-                                          (swap! mod-deps-atom resolve-nested-dependencies ctor)
-                                          (into acc structure))))
+                                          (doseq [k (keys nested-struct)]
+                                            (assert (not (contains? structure k)) (str "Nested " k "\n - " (get nested-struct k)
+                                                                                       "\ntrying to replace existing constructor " (get structure k))))
+                                          (assoc acc
+                                                 :dependencies (-> dependencies
+                                                                   (resolve-nested-dependencies name primary-component)
+                                                                   (merge-dependency-trees primary-component nested-deps))
+                                                 :structure (merge-nested-struct structure nested-struct)))))
                                     {}
                                     structure)]
+    (throw (ex-info "Ignoring the initialization options maps" {:todo "Add that minor detail"}))
     {::structure flattened-structure
      ::dependencies @mod-deps-atom}))
 

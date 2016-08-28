@@ -66,21 +66,21 @@ This is just proving out the concept that's hopefully useful in check-nested-com
     (println "***********************************************************
 Starting manual nesting test
 ***********************************************************")
-    (let [nested '#:sys{:system-configuration #:sys{:structure {:component-dsl.system-test.nested/database component-dsl.example-db/ctor,
-                                                                :component-dsl.system-test.nested/schema component-dsl.example-db/schema-builder},
-                                                    :dependencies {:component-dsl.system-test.nested/schema [:component-dsl.system-test.nested/database]}},
-                        :configuration-tree {:component-dsl.system-test.nested/database {:url "http://database:2020/connection"},
-                                             :component-dsl.system-test.nested/schema {:definition "http://database/schema.html"}},
-                        :primary-component :component-dsl.system-test.nested/database}
-          description `#:sys{:structure {::web component-dsl.core/ctor,
-                                         ::routes component-dsl.routes/ctor,
-                                         ::nested ~nested},
-                             :dependencies {::web [::routes],
-                                            ::routes [::nested]}}
-          options {::web {:port 2600, :resource-route "/home/www/public/"},
-                   ::routes {:handler (fn [_]
-                                        {:code 200
-                                         :body "Hello world"})}}]
+    (let [nested '#:sys{:system-configuration #:sys{:structure {:database component-dsl.example-db/ctor,
+                                                                :schema component-dsl.example-db/schema-builder},
+                                                    :dependencies {:schema [:database]}},
+                        :configuration-tree {:database {:url "http://database:2020/connection"},
+                                             :schema {:definition "http://database/schema.html"}},
+                        :primary-component :database}
+          description `#:sys{:structure {:web component-dsl.core/ctor,
+                                         :routes component-dsl.routes/ctor,
+                                         :nested ~nested},
+                             :dependencies {:web [:routes],
+                                            :routes [:nested]}}
+          options {:web {:port 2600, :resource-route "/home/www/public/"},
+                   :routes {:handler (fn [_]
+                                       {:code 200
+                                        :body "Hello world"})}}]
       (try
         (let [created (sys/build description options)]
           ;; Q: What about a predicate to ensure that each entry has exactly one match?
@@ -107,20 +107,22 @@ Starting manual nesting test
 
 (deftest check-nested-dependency-resolution
   (testing "Dependencies of/on a nested Component flatten correctly"
-    (let [nested '#:sys{:system-configuration #:sys{:structure {:component-dsl.system-test.nested/database component-dsl.example-db/ctor,
-                                                                :component-dsl.system-test.nested/schema component-dsl.example-db/schema-builder},
-                                                    :dependencies {:component-dsl.system-test.nested/schema [:component-dsl.system-test.nested/database]}},
-                        :configuration-tree {:component-dsl.system-test.nested/database {:url "http://database:2020/connection"},
-                                             :component-dsl.system-test.nested/schema {:definition "http://database/schema.html"}},
-                        :primary-component :component-dsl.system-test.nested/database}
-          [dependencies {::depends-on [::nested ::unrelated]
-                         ::nested {::url ::location}
-                         ::unrelated [::in-parent]}]]
-      (let [merged (sys/resolve-nested-dependencies dependencies nested)]
-        (is (= [:component-dsl.system-test.nested/database ::unrelated] (::depends-on merged)))
-        (is (not (contains? merged ::nested)))
-        (is (= {::url ::location} (:component-dsl.system-test.nested/database merged)))
-        (is (= ::in-parent (::unrelated merged)))))))
+    (let [nested '#:sys{:system-configuration #:sys{:structure {:database component-dsl.example-db/ctor,
+                                                                :schema component-dsl.example-db/schema-builder},
+                                                    :dependencies {:schema [:database]}},
+                        :configuration-tree {:database {:url "http://database:2020/connection"},
+                                             :schema {:definition "http://database/schema.html"}},
+                        :primary-component :database}
+          [dependencies {:depends-on [:nested :unrelated]
+                         :nested {:url :location}
+                         :unrelated [:in-parent]}]]
+      (let [merged (sys/resolve-nested-dependencies dependencies :nested)]
+        (testing "structural merge"
+          (is (= [:database :unrelated] (:depends-on merged)))
+          (is (not (contains? merged :nested)))
+          (is (= {:url :location} (:component-dsl.system-test.nested/database merged)))
+          (is (= :in-parent (:unrelated merged))))
+        (let [resolved (sys/merge-dependency-trees merged :nested :database)])))))
 
 ;;; This should really be a duplicate of check-manually-nested-components.
 ;;; I'm just being more "clever" about building the actual component tree
