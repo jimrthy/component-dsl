@@ -11,33 +11,6 @@
 ;;; Specs
 
 (s/def ::component-name keyword?)
-;; When a Component's dependency name doesn't match what the System calls it
-;; Key is what your Component calls it, value is what the System does
-(s/def ::component-name-map (s/map-of ::component-name ::component-name))
-
-(s/def ::component-ctor-id symbol?)
-
-;; Component 'name' to the namespaced initialization function
-(s/def ::initialization-map (s/map-of ::component-name ::component-ctor-id))
-
-(s/def ::dependency-seq (s/or :seq ::component-name
-                              :map ::component-name-map))
-;; Component 'name' to a seq of the 'names' of its dependencies
-(s/def ::system-dependencies (s/map-of ::component-name ::dependency-seq))
-
-;; Describe the system structure and its dependencies
-(s/def ::system-description (s/keys ::req {::structure ::initialization-map  ; this is a poor naming choice
-                                           ;; Very tempting to make this optional
-                                           ;; It won't be, except for trivial systems.
-                                           ;; But it's annoying to remember for those.
-                                           ;; Ah, well. If you're writing something trivial, don't use this.
-                                           ::dependencies ::system-dependencies}))
-
-;; key-value pairs that are suitable for passing to dependencies
-;; as the last argument of apply.
-;; TODO: I think I actually want s/alt
-(s/def ::named-instances (s/cat :name keyword?
-                                :instance any?))
 
 ;; The options to supply to each component when it's constructed
 ;; For flexibility, everything should be legal here.
@@ -57,6 +30,42 @@
 ;; declarative and easy, then to merge them into that sort
 ;; of single map in here.
 (s/def ::configuration-tree (s/map-of keyword? ::option-map))
+
+(s/def ::nested-definition (s/keys :req {::system-configuration ::initialization-map
+                                         ::configuration-tree ::configuration-tree}))
+
+;; When a Component's dependency name doesn't match what the System calls it
+;; Key is what your Component calls it, value is what the System does
+(s/def ::component-name-map (s/map-of ::component-name ::component-name))
+
+(s/def ::component-ctor-id symbol?)
+
+;;; Component 'name' to the namespaced initialization function
+(s/def ::initialization-map (s/map-of ::component-name (s/or :ctor ::component-ctor-id
+                                                             :nested ::nested-definition)))
+(s/def ::flattened-initialization-map (s/map-of ::component-name ::component-ctor-id))
+
+(s/def ::dependency-seq (s/or :seq ::component-name
+                              :map ::component-name-map))
+;; Component 'name' to a seq of the 'names' of its dependencies
+(s/def ::system-dependencies (s/map-of ::component-name ::dependency-seq))
+
+;; Describe the system structure and its dependencies
+(s/def ::flattened-description (s/keys ::req {::structure ::flattened-initialization-map  ; this is a poor naming choice
+                                              ;; Very tempting to make this optional
+                                              ;; It won't be, except for trivial systems.
+                                              ;; But it's annoying to remember for those.
+                                              ;; Ah, well. If you're writing something trivial, don't use this.
+                                              ::dependencies ::system-dependencies}))
+
+(s/def ::system-description (s/keys ::req {::structure ::initialization-map
+                                           :dependencies ::system-dependencies}))
+
+;; key-value pairs that are suitable for passing to dependencies
+;; as the last argument of apply.
+;; TODO: I think I actually want s/alt
+(s/def ::named-instances (s/cat :name keyword?
+                                :instance any?))
 
 (s/def ::name-space symbol?)
 (s/def ::schema-name keyword?)
@@ -87,9 +96,6 @@
 
 ;; Q: Can I get anything more interesting from this?
 (s/def ::system-map #(instance? SystemMap %))
-
-(s/def ::nested-definition (s/keys :req [::system-configuration
-                                         ::configuration-tree]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Internals
@@ -316,6 +322,17 @@ returning a seq of name/instance pairs that probably should have been a map"
                      (with-out-str (pprint descr)))
   (component/system-using inited descr))
 
+(s/fdef pre-process
+        :args (s/cat :description ::system-description)
+        :ret ::flattened-description)
+(defn pre-process
+  "Have to flaten out a nested system definition"
+  [description]
+  (reduce (fn [acc [name ctor]]
+            (throw (ex-info "Start Here" {})))
+          {}
+          description))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
 
@@ -328,8 +345,9 @@ returning a seq of name/instance pairs that probably should have been a map"
   "Returns a System that's ready to start"
   [descr options]
   (println "Building a system from keys" (keys descr))
-  (let [pre-init (system-map (::structure descr) options)]
-    (dependencies pre-init (::dependencies descr))))
+  (let [pre-processed (pre-process descr)
+        pre-init (system-map (::structure pre-processed) options)]
+    (dependencies pre-init (::dependencies pre-processed))))
 
 (s/fdef ctor
         :args (s/cat :config-file-name string?
@@ -344,7 +362,12 @@ The :dependencies describes the dependencies among components
 Options is a map of maps that will be supplied to each constructor
 
 This seemed like a good idea once upon a time, but it's looking more
-and more dubious as I keep moving forward and ignoring it."
+and more dubious as I keep moving forward and ignoring it in favor of
+build instead.
+
+This approach is more flexible at runtime, in terms of mixing/matching
+Components, but it seemed less responsive at build time. Should probably
+try it again now that I'm revisiting this pretty seriously."
   [config-file-name
    & config-options]
   (let [options (if (seq config-options)  ; the way optionals work

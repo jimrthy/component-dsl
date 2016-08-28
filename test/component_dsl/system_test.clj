@@ -1,5 +1,7 @@
 (ns component-dsl.system-test
-  "Make sure basic assumptions re: System descriptions work"
+  "Make sure basic assumptions re: System descriptions work
+
+TODO: Rename all these tests to .cljc"
   (:require [clojure.pprint :refer [pprint]]
             [clojure.spec :as s]
             [clojure.test :refer [deftest is testing] :as test]
@@ -57,35 +59,51 @@
 ;;; Tests
 
 (deftest check-manually-nested-components
-  (let [nested '#:component-dsl.system{:system-configuration #:component-dsl.system{:structure {:database component-dsl.example-db/ctor,
-                                                                                                :schema component-dsl.example-db/schema-builder},
-                                                                                    :dependencies {:schema [:database]}},
-                                       :configuration-tree {:database {:url "http://database:2020/connection"},
-                                                            :schema {:definition "http://database/schema.html"}}}
-        descr {:description '#:component-dsl.system{:structure {:web component-dsl.core/ctor,
-                                                                :routes component-dsl.routes/ctor,
-                                                                :nested nested},
-                                                    :dependencies {:web [:routes],
-                                                                   :routes [:database]}},
-               :options {:web {:port 2600, :resource-route "/home/www/public/"},
-                         :routes {:handler (fn [_]
-                                             {:code 200
-                                              :body "Hello world"})}}}]
-    (try
-      (let [created (sys/build (:description descr) (:options descr))]
-        ;; Q: What about a predicate to ensure that each entry has a match?
-        (is (= #{:web :routes :database :schema} (set (keys created))))
-        (let [actual-db (:database created)]
-          (is actual-db)
-          (is (= actual-db (-> created :routes :database)))
-          (is (= actual-db (-> created :schema :database)))))
-      (catch clojure.lang.ExceptionInfo ex
-        (println "Failed:" (.getMessage ex))
-        (let [failure-details (.getData ex)]
-          (println "Problem overview:\n" (keys failure-details))
-          (pprint failure-details)
-          (.printStackTrace ex)
-          (is (not ex)))))))
+  (testing "Q: Why would anyone ever want to do this?
+A: They wouldn't.
+This is just proving out the concept that's hopefully useful in check-nested-components
+(where this sort of System definition is built incrementally)"
+    (println "***********************************************************
+Starting manual nesting test
+***********************************************************")
+    (let [nested '#:component-dsl.system{:system-configuration #:component-dsl.system{:structure {:component-dsl.system-test.nested/database component-dsl.example-db/ctor,
+                                                                                                  :component-dsl.system-test.nested/schema component-dsl.example-db/schema-builder},
+                                                                                      :dependencies {:component-dsl.system-test.nested/schema [:component-dsl.system-test.nested/database]}},
+                                         :configuration-tree {:component-dsl.system-test.nested/database {:url "http://database:2020/connection"},
+                                                              :component-dsl.system-test.nested/schema {:definition "http://database/schema.html"}},
+                                         :primary-component :component-dsl.system-test.nested/database}
+          description `#:component-dsl.system{:structure #:component-dsl.system-test{:web component-dsl.core/ctor,
+                                                                                     :routes component-dsl.routes/ctor,
+                                                                                     :nested ~nested},
+                                              :dependencies #:component-dsl.system-test{:web [:component-dsl.system-test/routes],
+                                                                                        :routes [:component-dsl.system-test/nested]}}
+          options #:component-dsl.system-test{:web {:port 2600, :resource-route "/home/www/public/"},
+                                              :routes {:handler (fn [_]
+                                                                  {:code 200
+                                                                   :body "Hello world"})}}]
+      (try
+        (let [created (sys/build description options)]
+          ;; Q: What about a predicate to ensure that each entry has exactly one match?
+          ;; Q: Is there a good short-hand for specifying the namespace on the keywords to
+          ;; this set?
+          ;; Working with this at the REPL doesn't seem like it's going to be a lot of fun.
+          ;; Maybe I don't want to mess w/ trying to keyword these at al.
+          (is (= #{:component-dsl.system-test/web :component-dsl.system-test/routes
+                   :component-dsl.system-test.nested/database :component-dsl.system-test.nested/schema}
+                 (set (keys created))))
+          (let [actual-db (:component-dsl.system-test.nested/database created)]
+            (is actual-db)
+            (is (= actual-db (-> created ::routes :component-dsl.system-test.nested/database)))
+            (is (= actual-db (-> created ::schema :component-dsl.system-test.nested/database)))))
+        (catch clojure.lang.ExceptionInfo ex
+          (println "Failed:" (.getMessage ex))
+          (let [failure-details (.getData ex)]
+            (println "Problem overview:\n" (keys failure-details))
+            (pprint failure-details)
+            (.printStackTrace ex)
+            (is (not ex))))))))
+(comment (check-manually-nested-components)
+         )
 
 ;;; This should really be a duplicate of check-manually-nested-components.
 ;;; I'm just being more "clever" about building the actual component tree
