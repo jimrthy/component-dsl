@@ -59,7 +59,7 @@
                                               ::dependencies ::system-dependencies}))
 
 (s/def ::system-description (s/keys ::req {::structure ::initialization-map
-                                           :dependencies ::system-dependencies}))
+                                           ::dependencies ::system-dependencies}))
 
 ;; key-value pairs that are suitable for passing to dependencies
 ;; as the last argument of apply.
@@ -322,16 +322,40 @@ returning a seq of name/instance pairs that probably should have been a map"
                      (with-out-str (pprint descr)))
   (component/system-using inited descr))
 
+(s/fdef merge-dependencies
+        :args (s/cat :template ::dependency-seq
+                     :realized ::dependency-seq)
+        :ret ::dependency-seq)
+(defn merge-dependencies
+  [template realized]
+  (throw (ex-info "Start Here" {})))
+
 (s/fdef pre-process
         :args (s/cat :description ::system-description)
         :ret ::flattened-description)
 (defn pre-process
-  "Have to flaten out a nested system definition"
-  [description]
-  (reduce (fn [acc [name ctor]]
-            (throw (ex-info "Start Here" {})))
-          {}
-          description))
+  "Have to flatten out a nested system definition"
+  [{:keys [::structure ::dependencies]}]
+  (let [mod-deps-atom (atom dependencies)
+        flattened-structure (reduce (fn [acc [name ctor]]
+                                      (if (symbol? ctor)
+                                        (do
+                                          ;; Baseline unnested case
+                                          (assert (not (contains? acc name)) (str "Duplicate key specified: " name
+                                                                                  "\nExisting: " (get acc name)
+                                                                                  "\nReplacement: " ctor))
+                                          (assoc acc name ctor))
+                                        (let [{:keys [::structure ::dependencies]
+                                               :as de-nested} (pre-process ctor)]
+                                          (doseq [k (keys structure)]
+                                            (assert (not (contains? acc k)) (str "Nested " k "\n - " (get structure k)
+                                                                                 "\ntrying to replace existing constructor " (get acc k))))
+                                          (swap! mod-deps-atom resolve-nested-dependencies ctor)
+                                          (into acc structure))))
+                                    {}
+                                    structure)]
+    {::structure flattened-structure
+     ::dependencies @mod-deps-atom}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
