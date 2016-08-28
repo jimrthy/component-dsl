@@ -372,7 +372,7 @@ Like filling the blanks in a form letter"
                                                                                         "\nExisting: " (get structure name)
                                                                                         "\nReplacement: " ctor))
                                           (assoc-in acc [:structure name] ctor))
-                                        (let [{::primary-component} ctor
+                                        (let [{:keys [::primary-component]} ctor
                                               {nested-struct ::structure
                                                nested-deps ::dependencies
                                                :as de-nested} (pre-process ctor)]
@@ -387,8 +387,7 @@ Like filling the blanks in a form letter"
                                     {}
                                     structure)]
     (throw (ex-info "Ignoring the initialization options maps" {:todo "Add that minor detail"}))
-    {::structure flattened-structure
-     ::dependencies @mod-deps-atom}))
+    flattened-structure))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public

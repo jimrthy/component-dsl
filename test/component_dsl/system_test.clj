@@ -113,16 +113,18 @@ Starting manual nesting test
                         :configuration-tree {:database {:url "http://database:2020/connection"},
                                              :schema {:definition "http://database/schema.html"}},
                         :primary-component :database}
-          [dependencies {:depends-on [:nested :unrelated]
-                         :nested {:url :location}
-                         :unrelated [:in-parent]}]]
-      (let [merged (sys/resolve-nested-dependencies dependencies :nested)]
+          dependencies {:depends-on [:nested :unrelated]
+                        :nested {:url :location}
+                        :unrelated [:in-parent]}]
+      (let [merged (sys/resolve-nested-dependencies dependencies :nested :database)]
         (testing "structural merge"
           (is (= [:database :unrelated] (:depends-on merged)))
           (is (not (contains? merged :nested)))
           (is (= {:url :location} (:component-dsl.system-test.nested/database merged)))
           (is (= :in-parent (:unrelated merged))))
         (let [resolved (sys/merge-dependency-trees merged :nested :database)])))))
+(comment (check-nested-dependency-resolution)
+         )
 
 ;;; This should really be a duplicate of check-manually-nested-components.
 ;;; I'm just being more "clever" about building the actual component tree
