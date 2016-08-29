@@ -323,6 +323,17 @@ returning a seq of name/instance pairs that probably should have been a map"
                      (with-out-str (pprint descr)))
   (component/system-using inited descr))
 
+(s/fdef translate-dependency-value
+        :args (s/cat :val ::dependency-seq
+                     :to-replace ::component-name
+                     :replacement ::component-name))
+(defn translate-dependency-value
+  [val to-replace replacement]
+  (throw (ex-info "Not Implemented" {:val val
+                                     :to-replace to-replace
+                                     :replacement replacement
+                                     :interesting "Because val can be either a seq or a hash-map"})))
+
 (s/fdef merge-dependencies
         :args (s/cat :dependency-template ::dependency-seq
                      :to-replace ::component-name
@@ -335,7 +346,14 @@ Swap out the place-holders
 
 Like filling the blanks in a form letter"
   [dependency-template to-replace replacement]
-  (throw (ex-info "Start Here" {})))
+  (->> dependency-template
+       (map (fn [[k v]]
+              (let [k' (if (= k to-replace)
+                         replacement
+                         k)
+                    v' (translate-dependency-value v to-replace replacement)]
+                [k' v'])))
+       (into {})))
 
 (s/fdef merge-dependency-trees
         :args (s/cat :acc ::dependency-seq
@@ -343,7 +361,7 @@ Like filling the blanks in a form letter"
         :ret ::dependency-seq)
 (defn merge-dependency-trees
   [acc replacement delta]
-  (throw (ex-info "Start Here" {})))
+  (throw (ex-info "Write this" {})))
 
 (s/fdef merge-nested-struct
         :args (s/cat :root ::initialization-map
@@ -362,32 +380,33 @@ Like filling the blanks in a form letter"
 (defn pre-process
   "Have to flatten out nested system definitions"
   [{:keys [::structure ::dependencies]}]
-  (let [flattened-structure (reduce (fn [{:keys [structure dependencies]
-                                          :as acc}
-                                         [name ctor]]
-                                      (if (symbol? ctor)
-                                        (do
-                                          ;; Baseline unnested case
-                                          (assert (not (contains? structure name)) (str "Duplicate key specified: " name
-                                                                                        "\nExisting: " (get structure name)
-                                                                                        "\nReplacement: " ctor))
-                                          (assoc-in acc [:structure name] ctor))
-                                        (let [{:keys [::primary-component]} ctor
-                                              {nested-struct ::structure
-                                               nested-deps ::dependencies
-                                               :as de-nested} (pre-process ctor)]
-                                          (doseq [k (keys nested-struct)]
-                                            (assert (not (contains? structure k)) (str "Nested " k "\n - " (get nested-struct k)
-                                                                                       "\ntrying to replace existing constructor " (get structure k))))
-                                          (assoc acc
-                                                 :dependencies (-> dependencies
-                                                                   (resolve-nested-dependencies name primary-component)
-                                                                   (merge-dependency-trees primary-component nested-deps))
-                                                 :structure (merge-nested-struct structure nested-struct)))))
-                                    {}
-                                    structure)]
-    (throw (ex-info "Ignoring the initialization options maps" {:todo "Add that minor detail"}))
-    flattened-structure))
+  (let [tops (->> structure
+                  (filter (comp symbol? second))
+                  (into {}))
+        nested (->> structure
+                    (filter (comp (complement symbol?) second))
+                    (into {}))]
+    (reduce (fn [{:keys [structure dependencies]
+                  :as acc}
+                 [name ctor]]
+              (if (symbol? ctor)
+                (throw (ex-info "Should be obsolete"
+                                {:why? "Left-over from initial implementation"}))
+                (let [{:keys [::primary-component]} ctor
+                      {nested-struct ::structure
+                       nested-deps ::dependencies
+                       :as de-nested} (pre-process ctor)]
+                  (doseq [k (keys nested-struct)]
+                    (assert (not (contains? structure k)) (str "Nested " k "\n - " (get nested-struct k)
+                                                               "\ntrying to replace existing constructor " (get structure k))))
+                  (assoc acc
+                         :dependencies (-> dependencies
+                                           (resolve-nested-dependencies name primary-component)
+                                           (merge-dependency-trees primary-component nested-deps))
+                         :structure (merge-nested-struct structure nested-struct)))))
+            tops
+            nested))
+  (throw (ex-info "Ignoring the initialization options maps" {:todo "Add that minor detail"})))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public

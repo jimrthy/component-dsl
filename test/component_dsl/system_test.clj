@@ -58,6 +58,27 @@ TODO: Rename all these tests to .cljc"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Tests
 
+(deftest check-nested-dependency-resolution
+  (testing "Dependencies of/on a nested Component flatten correctly"
+    (let [nested '#:sys{:system-configuration #:sys{:structure {:database component-dsl.example-db/ctor,
+                                                                :schema component-dsl.example-db/schema-builder},
+                                                    :dependencies {:schema [:database]}},
+                        :configuration-tree {:database {:url "http://database:2020/connection"},
+                                             :schema {:definition "http://database/schema.html"}},
+                        :primary-component :database}
+          dependencies {:depends-on [:nested :unrelated]
+                        :nested {:url :location}
+                        :unrelated [:in-parent]}]
+      (let [merged (sys/resolve-nested-dependencies dependencies :nested :database)]
+        (testing "structural merge"
+          (is (= [:database :unrelated] (:depends-on merged)))
+          (is (not (contains? merged :nested)))
+          (is (= {:url :location} (:component-dsl.system-test.nested/database merged)))
+          (is (= :in-parent (:unrelated merged))))
+        (let [resolved (sys/merge-dependency-trees merged :nested :database)])))))
+(comment (check-nested-dependency-resolution)
+         )
+
 (deftest check-manually-nested-components
   (testing "Q: Why would anyone ever want to do this?
 A: They wouldn't.
@@ -88,13 +109,13 @@ Starting manual nesting test
           ;; this set?
           ;; Working with this at the REPL doesn't seem like it's going to be a lot of fun.
           ;; Maybe I don't want to mess w/ trying to keyword these at al.
-          (is (= #{:component-dsl.system-test/web :component-dsl.system-test/routes
-                   :component-dsl.system-test.nested/database :component-dsl.system-test.nested/schema}
+          (is (= #{:web :routes
+                   :database :schema}
                  (set (keys created))))
-          (let [actual-db (:component-dsl.system-test.nested/database created)]
+          (let [actual-db (:database created)]
             (is actual-db)
-            (is (= actual-db (-> created ::routes :component-dsl.system-test.nested/database)))
-            (is (= actual-db (-> created ::schema :component-dsl.system-test.nested/database)))))
+            (is (= actual-db (-> created :routes :database)))
+            (is (= actual-db (-> created :schema :database)))))
         (catch clojure.lang.ExceptionInfo ex
           (println "Failed:" (.getMessage ex))
           (let [failure-details (.getData ex)]
@@ -103,27 +124,6 @@ Starting manual nesting test
             (.printStackTrace ex)
             (is (not ex))))))))
 (comment (check-manually-nested-components)
-         )
-
-(deftest check-nested-dependency-resolution
-  (testing "Dependencies of/on a nested Component flatten correctly"
-    (let [nested '#:sys{:system-configuration #:sys{:structure {:database component-dsl.example-db/ctor,
-                                                                :schema component-dsl.example-db/schema-builder},
-                                                    :dependencies {:schema [:database]}},
-                        :configuration-tree {:database {:url "http://database:2020/connection"},
-                                             :schema {:definition "http://database/schema.html"}},
-                        :primary-component :database}
-          dependencies {:depends-on [:nested :unrelated]
-                        :nested {:url :location}
-                        :unrelated [:in-parent]}]
-      (let [merged (sys/resolve-nested-dependencies dependencies :nested :database)]
-        (testing "structural merge"
-          (is (= [:database :unrelated] (:depends-on merged)))
-          (is (not (contains? merged :nested)))
-          (is (= {:url :location} (:component-dsl.system-test.nested/database merged)))
-          (is (= :in-parent (:unrelated merged))))
-        (let [resolved (sys/merge-dependency-trees merged :nested :database)])))))
-(comment (check-nested-dependency-resolution)
          )
 
 ;;; This should really be a duplicate of check-manually-nested-components.
@@ -170,6 +170,18 @@ Starting manual nesting test
                  )))
     (keys (:description descr)))
   )
+
+(deftest check-configuration-override
+  ;; Outer layers should be able to override the configuration specified
+  ;; by the inner.
+  ;; This seems backwards, but we're working our way from the low-level specific
+  ;; details at the core to the high-level components at the outside that an
+  ;; app will actually interact with
+  (let [raw-descr (nested-components)
+        url-override "tcp://database:2020/prod-connection"
+        descr (assoc-in raw-descr [:options :database :url] url-override)
+        built (sys/build descr)]
+    (is (= url-override (-> built :database :url)))))
 
 (deftest parameter-creation
   "Working out what initialize-web actually needs to do.
