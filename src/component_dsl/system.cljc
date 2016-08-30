@@ -326,13 +326,28 @@ returning a seq of name/instance pairs that probably should have been a map"
 (s/fdef translate-dependency-value
         :args (s/cat :val ::dependency-seq
                      :to-replace ::component-name
-                     :replacement ::component-name))
+                     :replacement ::component-name)
+        :ret ::dependency-seq)
 (defn translate-dependency-value
   [val to-replace replacement]
-  (throw (ex-info "Not Implemented" {:val val
-                                     :to-replace to-replace
-                                     :replacement replacement
-                                     :interesting "Because val can be either a seq or a hash-map"})))
+  (reduce (fn [acc [k v]]
+            (let [v' (if (not= v to-replace)
+                       v replacement)]
+              (conj acc [k v'])))
+          {}
+          (if (sequential? val)
+            ;; Surely there's already a built-in for this
+            (reduce (fn [acc x]
+                      (assoc acc x x))
+                    {} val)
+            val)))
+(comment
+  (translate-dependency-value [:b :c :d] :c :replacement)
+  (translate-dependency-value {:b-cpt :b
+                               :c-cpt :c
+                               :d-cpt :d}
+                              :c :replacement)
+  )
 
 (s/fdef merge-dependencies
         :args (s/cat :dependency-template ::dependency-seq

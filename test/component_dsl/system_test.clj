@@ -58,6 +58,20 @@ TODO: Rename all these tests to .cljc"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Tests
 
+(deftest check-dependency-value-translation
+  (testing "sequential"
+    (let [dependencies [:b :c :d]]
+      (is (= {:b :b,
+              :c :replacement,
+              :d :d}
+             (sys/translate-dependency-value dependencies :c :replacement)))))
+  (testing "associative"
+    (let [dependencies {:c-cpt :c, :d-cpt :d, :e-cpt :e}]
+      (is (= {:c-cpt :replacement
+                  :d-cpt :d
+              :e-cpt :e}
+             (sys/translate-dependency-value dependencies :c :replacement))))))
+
 (deftest check-nested-dependency-resolution
   (testing "Dependencies of/on a nested Component flatten correctly"
     (let [nested '#:sys{:system-configuration #:sys{:structure {:database component-dsl.example-db/ctor,
