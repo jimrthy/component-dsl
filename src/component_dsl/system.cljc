@@ -359,7 +359,17 @@ returning a seq of name/instance pairs that probably should have been a map"
 
 Swap out the place-holders
 
-Like filling the blanks in a form letter"
+Like filling the blanks in a form letter
+
+Seems like I shouldn't need to supply replacement here.
+I should have access to the name of the primary component
+that's being replaced, so I can make this change based on that.
+
+I pretty much have to be calculating that part in the caller.
+Which seems like the wrong level...it seems like it would make
+more sense here.
+
+TODO: Revisit this."
   [dependency-template to-replace replacement]
   (->> dependency-template
        (map (fn [[k v]]
@@ -376,7 +386,8 @@ Like filling the blanks in a form letter"
         :ret ::dependency-seq)
 (defn merge-dependency-trees
   [acc replacement delta]
-  (throw (ex-info "Write this" {})))
+  (throw (ex-info "Write this" {:what? "Check both pre-process and the unit test
+Make sure their basic ideas agree."})))
 
 (s/fdef merge-nested-struct
         :args (s/cat :root ::initialization-map
@@ -410,10 +421,12 @@ Like filling the blanks in a form letter"
                 (let [{:keys [::primary-component]} ctor
                       {nested-struct ::structure
                        nested-deps ::dependencies
-                       :as de-nested} (pre-process ctor)]
-                  (doseq [k (keys nested-struct)]
-                    (assert (not (contains? structure k)) (str "Nested " k "\n - " (get nested-struct k)
-                                                               "\ntrying to replace existing constructor " (get structure k))))
+                       :as de-nested} (pre-process ctor)
+                      duplicates (filter (comp (partial contains? structure) key)
+                                         nested-struct)]
+                  (assert (empty? duplicates) (str "Duplicated keys:\n"
+                                                   duplicates
+                                                   "\nin\n" structure))
                   (assoc acc
                          :dependencies (-> dependencies
                                            (resolve-nested-dependencies name primary-component)

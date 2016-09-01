@@ -71,25 +71,41 @@ TODO: Rename all these tests to .cljc"
                   :d-cpt :d
               :e-cpt :e}
              (sys/translate-dependency-value dependencies :c :replacement))))))
+(comment (check-dependency-value-translation))
 
 (deftest check-nested-dependency-resolution
+  ;;; This is actually a pretty low-level implementation-specific test.
+  ;;; But I had to start somewhere
   (testing "Dependencies of/on a nested Component flatten correctly"
-    (let [nested '#:sys{:system-configuration #:sys{:structure {:database component-dsl.example-db/ctor,
-                                                                :schema component-dsl.example-db/schema-builder},
-                                                    :dependencies {:schema [:database]}},
-                        :configuration-tree {:database {:url "http://database:2020/connection"},
-                                             :schema {:definition "http://database/schema.html"}},
-                        :primary-component :database}
+    ;; The nested structural definitions really need to be namespaced
+    ;; But we can't feed them into records that way.
+    (let [nested '#:sys{:system-configuration #:sys{:structure {:nested/database component-dsl.example-db/ctor,
+                                                                :nested/schema component-dsl.example-db/schema-builder},
+
+                                                    :dependencies {:nested/schema {:database :nested/database}}},
+                        :configuration-tree {:nested/database {:url "http://database:2020/connection"},
+                                             :nested/schema {:definition "http://database/schema.html"}},
+                        :primary-component :nested/database}
           dependencies {:depends-on [:nested :unrelated]
                         :nested {:url :location}
                         :unrelated [:in-parent]}]
-      (let [merged (sys/resolve-nested-dependencies dependencies :nested :database)]
+      (let [merged (sys/resolve-nested-dependencies dependencies :nested :nested/database)]
         (testing "structural merge"
-          (is (= [:database :unrelated] (:depends-on merged)))
-          (is (not (contains? merged :nested)))
-          (is (= {:url :location} (:component-dsl.system-test.nested/database merged)))
-          (is (= :in-parent (:unrelated merged))))
-        (let [resolved (sys/merge-dependency-trees merged :nested :database)])))))
+          (is (= {:nested :nested/database, :unrelated :unrelated} (:depends-on merged)))
+          (is (= {:url :location} (:nested/database merged)))
+          (is (= {:in-parent :in-parent} (:unrelated merged))))
+        ;; This part is over-simplified.
+        ;; It really happens in the middle of a reduce, so the empty
+        ;; hashmap I'm using as an accumulator isn't realistic except as
+        ;; the simplest edge case.
+        ;; Then again, I had to start somewhere.
+        (let [resolved (sys/merge-dependency-trees {} :nested/database merged)]
+          (is (= {:depends-on {:nested :nested/database
+                               :unrelated :unrelated}
+                  :nested/database {:url :url, :location :location}
+                  :nested/schema {:database :nested/database}
+                  :unrelated [:in-parent]}
+                 resolved)))))))
 (comment (check-nested-dependency-resolution)
          )
 
