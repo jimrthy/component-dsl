@@ -55,6 +55,29 @@ TODO: Rename all these tests to .cljc"
                                    {:code 200
                                     :body "Hello world"})}}}))
 
+(defn hard-coded-nested-structure
+  []
+  (let [nested-struct '{::database component-dsl.example-db/ctor
+                        :schema component-dsl.example-db/schema-builder}
+        nested-deps {:schema {:database ::database}}
+        nested-opts {::database {:url "http://database:2020/connection"}
+                     :schema {:definition "http://database/schema.html"}}
+        nested #:component-dsl.system{:system-configuration #:component-dsl.system{:structure nested-struct
+                                                                                   :dependencies nested-deps}
+                                      :configuration-tree nested-opts
+                                      :primary-component ::database}
+        description `#:component-dsl.system{:structure {:web component-dsl.core/ctor,
+                                                        :routes component-dsl.routes/ctor,
+                                                        :nested ~nested},
+                                            :dependencies {:web [:routes],
+                                                           :routes [:nested]}}
+        options {:web {:port 2600, :resource-route "/home/www/public/"},
+                 :routes {:handler (fn [_]
+                                     {:code 200
+                                      :body "Hello world"})}}]
+    {::description description
+     ::options options}))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Tests
 
@@ -111,6 +134,40 @@ TODO: Rename all these tests to .cljc"
 (comment (check-nested-dependency-resolution)
          )
 
+(deftest check-manual-build-steps
+  (let [{:keys [::description ::options]} (hard-coded-nested-structure)]
+    (testing "Individual steps that happen during build"
+      (try
+        (let [pre-processed (sys/pre-process description)
+              _ (is pre-processed)
+              {:keys [:component-dsl.system/dependencies :component-dsl.system/structure]} pre-processed
+              _ (is dependencies)
+              _ (is structure (str "Missing ::structure in\n"
+                                   (with-out-str (pprint pre-processed))))
+              pre-init (sys/system-map structure options)
+              created (sys/dependencies pre-init dependencies)]
+          ;; Q: What about a predicate to ensure that each entry has exactly one match?
+          ;; Q: Is there a good short-hand for specifying the namespace on the keywords to
+          ;; this set?
+          ;; Working with this at the REPL doesn't seem like it's going to be a lot of fun.
+          ;; Maybe I don't want to mess w/ trying to keyword these at al.
+          (is (= #{:web :routes
+                   :database :schema}
+                 (set (keys created))))
+          (let [actual-db (:database created)]
+            (is actual-db)
+            (is (= actual-db (-> created :routes :database)))
+            (is (= actual-db (-> created :schema :database)))))
+        (catch clojure.lang.ExceptionInfo ex
+          (println "Failed:" (.getMessage ex))
+          (let [failure-details (.getData ex)]
+            (println "Problem overview:\n" (keys failure-details))
+            (pprint failure-details)
+            (.printStackTrace ex)
+            (is (not ex))))))))
+(comment (check-manual-build-steps)
+         )
+
 (deftest check-manually-nested-components
   (testing "Q: Why would anyone ever want to do this?
 A: They wouldn't.
@@ -119,21 +176,7 @@ This is just proving out the concept that's hopefully useful in check-nested-com
     (println "***********************************************************
 Starting manual nesting test
 ***********************************************************")
-    (let [nested '#:component-dsl.system{:system-configuration #:component-dsl.system{:structure {:database component-dsl.example-db/ctor,
-                                                                                                  :schema component-dsl.example-db/schema-builder},
-                                                                                      :dependencies {:schema [:database]}},
-                                         :configuration-tree {:database {:url "http://database:2020/connection"},
-                                                              :schema {:definition "http://database/schema.html"}},
-                                         :primary-component :database}
-          description `#:component-dsl.system{:structure {:web component-dsl.core/ctor,
-                                                          :routes component-dsl.routes/ctor,
-                                                          :nested ~nested},
-                                              :dependencies {:web [:routes],
-                                                             :routes [:nested]}}
-          options {:web {:port 2600, :resource-route "/home/www/public/"},
-                   :routes {:handler (fn [_]
-                                       {:code 200
-                                        :body "Hello world"})}}]
+    (let [{:keys [::description ::options]} (hard-coded-nested-structure)]
       (try
         (let [created (sys/build description options)]
           ;; Q: What about a predicate to ensure that each entry has exactly one match?

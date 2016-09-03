@@ -273,6 +273,10 @@ are found are available, so we can access the specs"
                    :multiple (s/coll-of ::component-instance)))
 (defn create-nested-components
   [config-options nested]
+  (println (str "component-dsl.system/created-nested-components\n\tOptions:"
+                (with-out-str (pprint config-options))
+                "\tnested definitions:\n"
+                (with-out-str (pprint nested))))
   (let [default-options (::configuration-tree nested)]
     (initialize (-> nested ::system-configuration ::structure)
                 (override-options default-options config-options))))
@@ -303,9 +307,13 @@ are found are available, so we can access the specs"
                      :config-options ::configuration-tree)
         :ret (s/coll-of ::component))
 (defn initialize
-  "require the individual namespaces and call each Component's constructor,
-returning a seq of name/instance pairs that probably should have been a map"
+  "require the individual namespaces and call each Component's constructor.
+Returns a seq of name/instance pairs that probably should have been a map."
   [descr config-options]
+  (println (str "component-dsl.system/initialize\n\tStructure:\n"
+                (with-out-str (pprint descr))
+                "\tOptions:\n"
+                (with-out-str (pprint config-options))))
   (let [result
         (mapcat (partial create-component config-options)
              descr)]
@@ -478,36 +486,35 @@ and should return
                      :cpt ::initialization-map)
         :ret ::flattened-initialization-map)
 (declare pre-process)
-(defn de-nest-components
+(defn de-nest-component-ctors
   "Designed to be the `f` of a reduce.
 
 Takes nested components with their dependencies and recursively promotes them to the top level."
   [{:keys [structure dependencies]
     :as acc}
-   [name ctor]]
-  (if (symbol? ctor)
-    ;; The original implementation ran this across everything, whether
-    ;; it was nested or not.
-    ;; That was silly and brittle. Should only be reducing the nested
-    ;; components into an accumulator that was pre-populated with the
-    ;; top-level components
-    (throw (ex-info "Should be obsolete"
-                    {:why? "Left-over from initial implementation"}))
-    (let [{:keys [::primary-component]} ctor
-          {nested-struct ::structure
-           nested-deps ::dependencies
-           :as de-nested} (pre-process ctor)
-          duplicates (filter (comp (partial contains? structure) key)
-                             nested-struct)]
-      (assert (empty? duplicates) (str "Duplicated keys:\n"
-                                       duplicates
-                                       "\nin\n" structure))
-      (assoc acc
-             ::dependencies (-> dependencies
-                                (into (dissoc nested-deps primary-component))
-                                (resolve-nested-dependencies name primary-component)
-                                (merge-dependency-trees nested-deps))
-             ::structure (merge-nested-struct structure nested-struct)))))
+   [name description]]
+  (println (str "\nde-nesting nested Component description " name " --\n" (with-out-str (pprint description))
+                "into\n"
+                (with-out-str (pprint acc))))
+  (let [{:keys [::primary-component]} description
+        {nested-struct ::structure
+         nested-deps ::dependencies
+         :as de-nested} (pre-process (::system-configuration description))
+        duplicates (filter (comp (partial contains? structure) key)
+                           nested-struct)]
+    (assert (empty? duplicates) (str "Duplicated keys:\n"
+                                     duplicates
+                                     "\nin\n" structure))
+    (println (str "After pre-processing that description, we extracted the nested structure\n"
+                  (with-out-str (pprint nested-struct))
+                  "with dependencies\n"
+                  (with-out-str (pprint nested-deps))))
+    (assoc acc
+           ::dependencies (-> dependencies
+                              (into (dissoc nested-deps primary-component))
+                              (resolve-nested-dependencies name primary-component)
+                              (merge-dependency-trees nested-deps))
+           ::structure (merge-nested-struct structure nested-struct))))
 
 (s/fdef pre-process
         :args (s/cat :description ::system-description)
@@ -525,7 +532,7 @@ Takes nested components with their dependencies and recursively promotes them to
     (println "pre-processing\n" (with-out-str (pprint nested))
              "\ninto\n" (with-out-str (pprint tops))
              "\nbased on\n" (with-out-str (pprint params)))
-    {::structure (reduce de-nest-components
+    {::structure (reduce de-nest-component-ctors
                          tops
                          nested)
      ::dependencies dependencies}))
