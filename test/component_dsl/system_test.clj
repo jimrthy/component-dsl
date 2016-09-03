@@ -79,17 +79,19 @@ TODO: Rename all these tests to .cljc"
   (testing "Dependencies of/on a nested Component flatten correctly"
     ;; The nested structural definitions really need to be namespaced
     ;; But we can't feed them into records that way.
-    (let [nested '#:sys{:system-configuration #:sys{:structure {:nested/database component-dsl.example-db/ctor,
+    (let [nested-dependencies {:nested/schema {:database :nested/database}}
+          nested '#:sys{:system-configuration #:sys{:structure {:nested/database component-dsl.example-db/ctor,
                                                                 :nested/schema component-dsl.example-db/schema-builder},
 
-                                                    :dependencies {:nested/schema {:database :nested/database}}},
+                                                    :dependencies nested-dependencies},
                         :configuration-tree {:nested/database {:url "http://database:2020/connection"},
                                              :nested/schema {:definition "http://database/schema.html"}},
                         :primary-component :nested/database}
           dependencies {:depends-on [:nested :unrelated]
                         :nested {:url :location}
                         :unrelated [:in-parent]}]
-      (let [merged (sys/resolve-nested-dependencies dependencies :nested :nested/database)]
+      (let [pre-merged (into dependencies (dissoc nested-dependencies :nested/database))
+            merged (sys/resolve-nested-dependencies pre-merged :nested :nested/database)]
         (testing "structural merge"
           (is (= {:nested :nested/database, :unrelated :unrelated} (:depends-on merged)))
           (is (= {:url :location} (:nested/database merged)))

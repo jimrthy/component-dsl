@@ -478,6 +478,7 @@ Takes nested dependencies and recursively promotes them to the top level."
                                        "\nin\n" structure))
       (assoc acc
              :dependencies (-> dependencies
+                               (into (dissoc nested-deps primary-component))
                                (resolve-nested-dependencies name primary-component)
                                (merge-dependency-trees nested-deps))
              :structure (merge-nested-struct structure nested-struct)))))
