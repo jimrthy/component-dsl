@@ -16,20 +16,23 @@
 ;; For flexibility, everything should be legal here.
 ;; But, come on, when would the keys ever be anything except
 ;; keywords?
-(s/def ::option-map (s/map-of ::component-name any?))
+;; Note that the keys are not ::component-name!
+;; That's a higher-level abstraction captured below in
+;; ::configuration-tree
+(s/def ::option-map (s/map-of keyword? any?))
 
-;; Which parameters get passed to the various constructors?
-;;
-;; The keys are the corresponding names of each Component.
-;;
-;; This seems like a silly approach...why not just describe
-;; each Component, include its constructor and associated args,
-;; and its dependencies altogether?
-;;
-;; The entire point is really to make all those details
-;; declarative and easy, then to merge them into that sort
-;; of single map in here.
-(s/def ::configuration-tree (s/map-of keyword? ::option-map))
+;;; Which parameters get passed to the various constructors?
+;;;
+;;; The keys are the corresponding names of each Component.
+;;;
+;;; This seems like a silly approach...why not just describe
+;;; each Component, include its constructor and associated args,
+;;; and its dependencies altogether?
+;;;
+;;; The entire point is really to make all those details
+;;; declarative and easy, then to merge them into that sort
+;;; of single map in here.
+(s/def ::configuration-tree (s/map-of ::component-name ::option-map))
 
 (s/def ::nested-definition (s/keys :req {::system-configuration ::initialization-map
                                          ::configuration-tree ::configuration-tree
@@ -41,7 +44,7 @@
 
 (s/def ::component-ctor-id symbol?)
 
-;;; Component 'name' to the namespaced initialization function
+;;; Map of Component 'name' => (or namespaced-initialization-function nested-definition)
 (s/def ::initialization-map (s/map-of ::component-name (s/or :ctor ::component-ctor-id
                                                              :nested ::nested-definition)))
 (s/def ::flattened-initialization-map (s/map-of ::component-name ::component-ctor-id))
@@ -450,7 +453,8 @@ and should return
 
 (s/fdef de-nest-components
         :args (s/cat :acc (s/tuple ::initialization-map ::system-dependencies)
-                     :cpt ::initialization-map))
+                     :cpt ::initialization-map)
+        :ret ::flattened-initialization-map)
 (declare pre-process)
 (defn de-nest-components
   "Designed to be the `f` of a reduce.
@@ -497,8 +501,24 @@ Takes nested dependencies and recursively promotes them to the top level."
                     (into {}))]
     (reduce de-nest-components
             tops
-            nested))
-  (throw (ex-info "Ignoring the initialization options maps" {:todo "Add that minor detail"})))
+            nested)))
+
+(s/fdef flatten-options
+        :args (s/cat :top-level ::configuration-tree
+                     :component-tree ::initialization-map)
+        :ret ::configuration-tree)
+(defn flatten-options
+  "Pull ctor options from the tree of nested components and override them with higher-level ctor options
+
+For performance reasons, it's very tempting to do this in parallel with merging the tree
+of structure/dependencies so I don't have to traverse the tree twice.
+
+If your component tree is so big that you have to worry about the performance implications of
+traversing it twice...that's the sort of problem that I think I'd like to be solving here.
+
+TODO: Worry about that when the baseline works."
+  [top-level component-tree]
+  (throw (ex-info "Start here" {:todo "Write this"})))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
@@ -513,7 +533,8 @@ Takes nested dependencies and recursively promotes them to the top level."
   [descr options]
   (println "Building a system from keys" (keys descr))
   (let [pre-processed (pre-process descr)
-        pre-init (system-map (::structure pre-processed) options)]
+        flattened-options (flatten-options options descr)
+        pre-init (system-map (::structure pre-processed) flattened-options)]
     (dependencies pre-init (::dependencies pre-processed))))
 
 (s/fdef ctor
