@@ -119,17 +119,17 @@ This is just proving out the concept that's hopefully useful in check-nested-com
     (println "***********************************************************
 Starting manual nesting test
 ***********************************************************")
-    (let [nested '#:sys{:system-configuration #:sys{:structure {:database component-dsl.example-db/ctor,
-                                                                :schema component-dsl.example-db/schema-builder},
-                                                    :dependencies {:schema [:database]}},
-                        :configuration-tree {:database {:url "http://database:2020/connection"},
-                                             :schema {:definition "http://database/schema.html"}},
-                        :primary-component :database}
-          description `#:sys{:structure {:web component-dsl.core/ctor,
-                                         :routes component-dsl.routes/ctor,
-                                         :nested ~nested},
-                             :dependencies {:web [:routes],
-                                            :routes [:nested]}}
+    (let [nested '#:component-dsl.system{:system-configuration #:component-dsl.system{:structure {:database component-dsl.example-db/ctor,
+                                                                                                  :schema component-dsl.example-db/schema-builder},
+                                                                                      :dependencies {:schema [:database]}},
+                                         :configuration-tree {:database {:url "http://database:2020/connection"},
+                                                              :schema {:definition "http://database/schema.html"}},
+                                         :primary-component :database}
+          description `#:component-dsl.system{:structure {:web component-dsl.core/ctor,
+                                                          :routes component-dsl.routes/ctor,
+                                                          :nested ~nested},
+                                              :dependencies {:web [:routes],
+                                                             :routes [:nested]}}
           options {:web {:port 2600, :resource-route "/home/www/public/"},
                    :routes {:handler (fn [_]
                                        {:code 200
@@ -212,8 +212,11 @@ Starting manual nesting test
   (let [raw-descr (nested-components)
         url-override "tcp://database:2020/prod-connection"
         descr (assoc-in raw-descr [:options :database :url] url-override)
-        built (sys/build descr)]
+        built (sys/build (:description descr) (:options descr))]
     (is (= url-override (-> built :database :url)))))
+(comment
+  (check-configuration-override)
+  )
 
 (deftest parameter-creation
   "Working out what initialize-web actually needs to do.
@@ -322,10 +325,17 @@ in the project from which this was refactored"
       (is (= (:routes started)
              (-> started :web :routes))
           "System started successfully")
-      (is (= (-> started :web :port) 8000)
+      (is (= 8000 (-> started :web :port))
           "Set up default port correctly")
       (finally
         (component/stop started)))))
+(comment
+  (let [descr #:component-dsl.system{:structure (simple-web-components)
+                                     :dependencies {:web [:routes]}}
+        inited (sys/build descr {})]
+    inited
+    (sys/pre-process descr))
+  )
 
 (deftest realistic
   "How you probably want to use it"

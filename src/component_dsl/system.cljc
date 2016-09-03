@@ -34,9 +34,12 @@
 ;;; of single map in here.
 (s/def ::configuration-tree (s/map-of ::component-name ::option-map))
 
-(s/def ::nested-definition (s/keys :req {::system-configuration ::initialization-map
-                                         ::configuration-tree ::configuration-tree
-                                         ::primary-component ::component-name}))
+(s/def ::nested-definition (s/keys :req [::system-configuration
+                                         ::configuration-tree
+                                         ::primary-component]
+                                   #_{::system-configuration ::initialization-map
+                                      ::configuration-tree ::configuration-tree
+                                      ::primary-component ::component-name}))
 
 ;; When a Component's dependency name doesn't match what the System calls it
 ;; Key is what your Component calls it, value is what the System does
@@ -186,15 +189,18 @@ are found are available, so we can access the specs"
                                 local-options
                                 "\nHonestly, this is fatal")]
                    (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) msg ex)))))]
-    (if (s/valid? ::nested-definition instance)
+    (when (s/valid? ::nested-definition instance)
       (do
-        (println "Recursing based on" (keys instance))
-        (throw (ex-info "Should have already handled recursion")))
-      (println "Won't recurse because" name "is at bottom"))
-    (condp s/valid? instance
-      ;; recursion FTW!
-      ::nested-definition (initialize (::description instance) (::options instance))
-      map? [[name instance]])))
+        (println "Recursing because\n"
+                 (with-out-str (pprint instance))
+                 "\ncreated by calling" ctor
+                 "\non" (with-out-str (pprint local-options))
+                 "\nfor the Component named" name
+                 "\nis a valid ::nested-definition"
+                 "\nConformed version looks like:\n"
+                 (with-out-str (pprint (s/conform ::nested-definition instance))))
+        (throw (ex-info "Should have already handled recursion" {}))))
+    [[name instance]]))
 
 (s/fdef create-individual-component
         :args (s/cat :config-options ::configuration-tree
@@ -242,6 +248,20 @@ are found are available, so we can access the specs"
     (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) (str "No such constructor:\n"
                                                                 ctor-sym)))))
 
+(s/fdef override-options
+        :args (s/cat :defaults ::configuration-tree
+                     :overrides ::configuration-tree)
+        :ret ::configuration-tree)
+(defn override-options
+  [defaults overrides]
+  (let [msg (str "Trying to override\n"
+                 (with-out-str (pprint defaults))
+                 "\nwith\n"
+                 (with-out-str (pprint overrides)))]
+    (throw (ex-info msg {:problem "Not Implemented"
+                         :defaults defaults
+                         :overrides overrides}))))
+
 (s/fdef create-nested-components
         :args (s/cat :config-options ::configuration-tree
                      :nested ::nested-definition)
@@ -253,8 +273,9 @@ are found are available, so we can access the specs"
                    :multiple (s/coll-of ::component-instance)))
 (defn create-nested-components
   [config-options nested]
-  (initialize (-> nested ::system-configuration ::structure)
-              (-> nested ::configuration-tree)))
+  (let [default-options (::configuration-tree nested)]
+    (initialize (-> nested ::system-configuration ::structure)
+                (override-options default-options config-options))))
 
 (s/fdef create-component
         :args (s/cat :config-options ::configuration-tree
@@ -270,7 +291,8 @@ are found are available, so we can access the specs"
   ;; just loading the definitions from EDN.
   ;; It's really too macro-ish
   (let [[name ctor-descr] definition]
-    (println "cpt-dsl.system/create-component: Trying to create component" name "using the constructor" ctor-descr)
+    (println "cpt-dsl.system/create-component: Trying to create component" name
+             "using the constructor" ctor-descr)
     (if (symbol? ctor-descr)
       (create-individual-component config-options definition)
       (create-nested-components config-options ctor-descr))))
@@ -459,7 +481,7 @@ and should return
 (defn de-nest-components
   "Designed to be the `f` of a reduce.
 
-Takes nested dependencies and recursively promotes them to the top level."
+Takes nested components with their dependencies and recursively promotes them to the top level."
   [{:keys [structure dependencies]
     :as acc}
    [name ctor]]
@@ -481,27 +503,32 @@ Takes nested dependencies and recursively promotes them to the top level."
                                        duplicates
                                        "\nin\n" structure))
       (assoc acc
-             :dependencies (-> dependencies
-                               (into (dissoc nested-deps primary-component))
-                               (resolve-nested-dependencies name primary-component)
-                               (merge-dependency-trees nested-deps))
-             :structure (merge-nested-struct structure nested-struct)))))
+             ::dependencies (-> dependencies
+                                (into (dissoc nested-deps primary-component))
+                                (resolve-nested-dependencies name primary-component)
+                                (merge-dependency-trees nested-deps))
+             ::structure (merge-nested-struct structure nested-struct)))))
 
 (s/fdef pre-process
         :args (s/cat :description ::system-description)
         :ret ::flattened-description)
 (defn pre-process
   "Have to flatten out nested system definitions"
-  [{:keys [::structure ::dependencies]}]
+  [{:keys [::structure ::dependencies]
+    :as params}]
   (let [tops (->> structure
                   (filter (comp symbol? second))
                   (into {}))
         nested (->> structure
                     (filter (comp (complement symbol?) second))
                     (into {}))]
-    (reduce de-nest-components
-            tops
-            nested)))
+    (println "pre-processing\n" (with-out-str (pprint nested))
+             "\ninto\n" (with-out-str (pprint tops))
+             "\nbased on\n" (with-out-str (pprint params)))
+    {::structure (reduce de-nest-components
+                         tops
+                         nested)
+     ::dependencies dependencies}))
 
 (s/fdef flatten-options
         :args (s/cat :top-level ::configuration-tree
@@ -518,6 +545,10 @@ traversing it twice...that's the sort of problem that I think I'd like to be sol
 
 TODO: Worry about that when the baseline works."
   [top-level component-tree]
+  (println "Overriding the options from\n"
+           (with-out-str (pprint component-tree))
+           "\nwith\n"
+           (with-out-str (pprint top-level)))
   (throw (ex-info "Start here" {:todo "Write this"})))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -533,8 +564,8 @@ TODO: Worry about that when the baseline works."
   [descr options]
   (println "Building a system from keys" (keys descr))
   (let [pre-processed (pre-process descr)
-        flattened-options (flatten-options options descr)
-        pre-init (system-map (::structure pre-processed) flattened-options)]
+        ;;flattened-options (flatten-options options descr)
+        pre-init (system-map (::structure pre-processed) #_flattened-options options)]
     (dependencies pre-init (::dependencies pre-processed))))
 
 (s/fdef ctor
