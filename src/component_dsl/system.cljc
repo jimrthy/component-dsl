@@ -357,19 +357,23 @@ returning a seq of name/instance pairs that probably should have been a map"
 (defn resolve-nested-dependencies
   "Top-level components can depend on nested, and vice versa
 
-Swap out the place-holders
+Swap out the alias place-holders, like filling the blanks in a form letter.
 
-Like filling the blanks in a form letter
+e.g. If we have a dependency tree that looks like
+{:a [:b :c]
+ :b [:c]}
+and :b is really a placeholder for :nested, then this should return
+{:a [:nested :c]
+ :nested [:c]}
+Well, except that it really only deals with maps for dependencies.
+But that's the general idea.
 
-Seems like I shouldn't need to supply replacement here.
-I should have access to the name of the primary component
-that's being replaced, so I can make this change based on that.
+It seems like I shouldn't need to specify replacement
+as an arg. It really should be available somewhere
+in the dependency-template.
 
-I pretty much have to be calculating that part in the caller.
-Which seems like the wrong level...it seems like it would make
-more sense here.
-
-TODO: Revisit this."
+That may be (but probably isn't) the case. If it is,
+that's an accident of the implementation."
   [dependency-template to-replace replacement]
   (->> dependency-template
        (map (fn [[k v]]
@@ -382,12 +386,56 @@ TODO: Revisit this."
 
 (s/fdef merge-dependency-trees
         :args (s/cat :acc ::dependency-seq
-                     :delta ::dependency-seq)
+                     :nested-deps ::dependency-seq)
         :ret ::dependency-seq)
 (defn merge-dependency-trees
-  [acc replacement delta]
-  (throw (ex-info "Write this" {:what? "Check both pre-process and the unit test
-Make sure their basic ideas agree."})))
+  "Nested dependencies can have their own dependencies specified at various levels.
+
+Note that this is really meant to be [part of] a reduction.
+
+And that it's really only concerned with the dependency ieces
+
+Say you have a component structure like
+  {:a 'top-level-ctor
+   :b {::system-configuration {:structure {:nested/database 'database-ctor
+                                           :nested/web-server 'web-server-ctor
+                                           :nested/whatsit 'whatsit-ctor}
+                               :dependencies {:nested/web-server {:database :nested/database}
+                                              :nested/database [:nested/whatsit]}
+       ::configuration-tree {:nested/database {:url \"database.private.com:19849/connection\"}
+                             :nested/web-server {:port 4916}}
+       ::primary-component :nested/database}
+   :c 'credentials-cpt-ctor}
+that has a dependency tree like
+
+  {:a [:b]
+   :b {:credentials :c}}
+
+=> the :b component (aka :nested/database) depends on both the :whatsit component (declared
+in its nesting layer) and the credentials component (declared at the top of the tree).
+
+This gets more interesting because the outer/top level pieces must override what's declared
+at the inner layers because they're closer to the actual usage. This is pretty much exactly
+like using ~/.cfg to override a system-level /etc/cfg
+
+In that example, this should be called with parameters
+acc: {:a {:b :nested/database}
+      :nested/database {:credentials :c}}
+nested-deps: {:nested/web-server {:database :nested/database}
+                                  :nested/database [:nested/whatsit]}
+and should return
+  {:a {:b :nested/database}
+   :nested/database {:credentials :c
+                     :nested/whatsit :nested/whatsit}
+   :nested/web-server {:database :nested/database}}
+  "
+  [acc nested-deps]
+  (reduce (fn [acc' [k v]]
+            ;; Q: What are the odds that it's this easy?
+            (update acc' k (fn [outer]
+                             (into v outer))))
+          acc
+          nested-deps))
 
 (s/fdef merge-nested-struct
         :args (s/cat :root ::initialization-map
@@ -399,6 +447,40 @@ Make sure their basic ideas agree."})))
   ;; (since they're really fields in defrecord instances).
   ;; TODO: Check for duplicates!
   (into root de-nesting))
+
+(s/fdef de-nest-components
+        :args (s/cat :acc (s/tuple ::initialization-map ::system-dependencies)
+                     :cpt ::initialization-map))
+(declare pre-process)
+(defn de-nest-components
+  "Designed to be the `f` of a reduce.
+
+Takes nested dependencies and recursively promotes them to the top level."
+  [{:keys [structure dependencies]
+    :as acc}
+   [name ctor]]
+  (if (symbol? ctor)
+    ;; The original implementation ran this across everything, whether
+    ;; it was nested or not.
+    ;; That was silly and brittle. Should only be reducing the nested
+    ;; components into an accumulator that was pre-populated with the
+    ;; top-level components
+    (throw (ex-info "Should be obsolete"
+                    {:why? "Left-over from initial implementation"}))
+    (let [{:keys [::primary-component]} ctor
+          {nested-struct ::structure
+           nested-deps ::dependencies
+           :as de-nested} (pre-process ctor)
+          duplicates (filter (comp (partial contains? structure) key)
+                             nested-struct)]
+      (assert (empty? duplicates) (str "Duplicated keys:\n"
+                                       duplicates
+                                       "\nin\n" structure))
+      (assoc acc
+             :dependencies (-> dependencies
+                               (resolve-nested-dependencies name primary-component)
+                               (merge-dependency-trees nested-deps))
+             :structure (merge-nested-struct structure nested-struct)))))
 
 (s/fdef pre-process
         :args (s/cat :description ::system-description)
@@ -412,26 +494,7 @@ Make sure their basic ideas agree."})))
         nested (->> structure
                     (filter (comp (complement symbol?) second))
                     (into {}))]
-    (reduce (fn [{:keys [structure dependencies]
-                  :as acc}
-                 [name ctor]]
-              (if (symbol? ctor)
-                (throw (ex-info "Should be obsolete"
-                                {:why? "Left-over from initial implementation"}))
-                (let [{:keys [::primary-component]} ctor
-                      {nested-struct ::structure
-                       nested-deps ::dependencies
-                       :as de-nested} (pre-process ctor)
-                      duplicates (filter (comp (partial contains? structure) key)
-                                         nested-struct)]
-                  (assert (empty? duplicates) (str "Duplicated keys:\n"
-                                                   duplicates
-                                                   "\nin\n" structure))
-                  (assoc acc
-                         :dependencies (-> dependencies
-                                           (resolve-nested-dependencies name primary-component)
-                                           (merge-dependency-trees primary-component nested-deps))
-                         :structure (merge-nested-struct structure nested-struct)))))
+    (reduce de-nest-components
             tops
             nested))
   (throw (ex-info "Ignoring the initialization options maps" {:todo "Add that minor detail"})))

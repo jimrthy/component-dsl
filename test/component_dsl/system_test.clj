@@ -99,12 +99,12 @@ TODO: Rename all these tests to .cljc"
         ;; hashmap I'm using as an accumulator isn't realistic except as
         ;; the simplest edge case.
         ;; Then again, I had to start somewhere.
-        (let [resolved (sys/merge-dependency-trees {} :nested/database merged)]
+        (let [resolved (sys/merge-dependency-trees {} merged)]
           (is (= {:depends-on {:nested :nested/database
                                :unrelated :unrelated}
-                  :nested/database {:url :url, :location :location}
+                  :nested/database {:url :location}
                   :nested/schema {:database :nested/database}
-                  :unrelated [:in-parent]}
+                  :unrelated {:in-parent :in-parent}}
                  resolved)))))))
 (comment (check-nested-dependency-resolution)
          )
