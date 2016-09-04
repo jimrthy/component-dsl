@@ -179,7 +179,8 @@ TODO: Rename all these tests to .cljc"
                #_:component-dsl.system/options
                #_keys
                #_:component-dsl.system/structure
-               :component-dsl.system/dependencies))
+               #_:component-dsl.system/dependencies
+               pprint))
          )
 
 (deftest check-manually-nested-components

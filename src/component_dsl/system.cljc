@@ -554,29 +554,23 @@ Takes nested components with their dependencies and recursively promotes them to
     (assert (empty? duplicates) (str "Duplicated keys:\n"
                                      duplicates
                                      "\nin\n" structure))
-    (if (or true (not (empty? nested-struct)))
-      (do
-        (println (str "component-dsl.system/de-nest-component-ctors"
-                      " extracted the nested structure\n"
-                      (with-out-str (pprint nested-struct))
-                      "with dependencies\n"
-                      (with-out-str (pprint nested-deps))
-                      "from the raw pre-processed result w/ keys\n\t"
-                      (keys pre-processed)))
-        (comment (assoc acc
-                        ::dependencies (-> dependencies
-                                           (into (dissoc nested-deps primary-component))
-                                           (resolve-nested-dependencies name primary-component)
-                                           (merge-dependency-trees nested-deps))
-                        ::structure (merge-nested-struct structure nested-struct)))
-        (into acc (merge-nested-struct (merge-nested-struct structure tops-to-merge)
-                                       nested-struct)))
-      (do
-        (println "component-dsl.system/de-nest-component-ctors"
-                 "Hit the bottom")
-        (assert (empty? nested-deps))
-        (assoc acc name description)
-        acc))))
+    (println (str "component-dsl.system/de-nest-component-ctors"
+                  " extracted the nested structure\n"
+                  (with-out-str (pprint nested-struct))
+                  "with dependencies\n"
+                  (with-out-str (pprint nested-deps))
+                  "from the raw pre-processed result w/ keys\n\t"
+                  (keys pre-processed)))
+    (comment (assoc acc
+                    ::dependencies (-> dependencies
+                                       (into (dissoc nested-deps primary-component))
+                                       (resolve-nested-dependencies name primary-component)
+                                       (merge-dependency-trees nested-deps))
+                    ::structure (merge-nested-struct structure nested-struct)))
+    (as-> structure x
+        (merge-nested-struct x tops-to-merge)
+        (merge-nested-struct x nested-struct)
+        (merge-nested-struct acc x))))
 
 (s/fdef pre-process
         :args (s/cat :description ::system-description
