@@ -481,48 +481,6 @@ and should return
   ;; TODO: Check for duplicates!
   (into root de-nesting))
 
-(s/fdef de-nest-components
-        :args (s/cat :acc (s/tuple ::initialization-map ::system-dependencies)
-                     :cpt ::initialization-map)
-        :ret ::flattened-initialization-map)
-(declare pre-process)
-(defn de-nest-component-ctors
-  "Designed to be the `f` of a reduce.
-
-Takes nested components with their dependencies and recursively promotes them to the top level."
-  [{:keys [structure dependencies]
-    :as acc}
-   [name description]]
-  (println (str "\nde-nesting nested Component description " name " --\n" (with-out-str (pprint description))
-                "into\n"
-                (with-out-str (pprint acc))))
-  (let [{:keys [::configuration-tree ::primary-component]} description
-        {nested-struct ::structure
-         nested-deps ::dependencies
-         :as de-nested} (pre-process (::system-configuration description)
-                                     configuration-tree)
-        duplicates (filter (comp (partial contains? structure) key)
-                           nested-struct)]
-    (assert (empty? duplicates) (str "Duplicated keys:\n"
-                                     duplicates
-                                     "\nin\n" structure))
-    (if (not (empty? nested-struct))
-      (do
-        (println (str "component-dsl.system/pre-process  extracted the nested structure\n"
-                      (with-out-str (pprint nested-struct))
-                      "with dependencies\n"
-                      (with-out-str (pprint nested-deps))))
-        (assoc acc
-               ::dependencies (-> dependencies
-                                  (into (dissoc nested-deps primary-component))
-                                  (resolve-nested-dependencies name primary-component)
-                                  (merge-dependency-trees nested-deps))
-               ::structure (merge-nested-struct structure nested-struct)))
-      (do
-        (println "component-dsl.system/pre-process Hit the bottom")
-        (assert (empty? nested-deps))
-        acc))))
-
 (s/fdef merge-individual-option
         :args (s/cat :acc ::configuration-tree
                      :options (s/cat :component-name ::component-name
@@ -555,6 +513,65 @@ Takes nested components with their dependencies and recursively promotes them to
   ;; Q: Does this need to recurse?
   (reduce merge-individual-option acc configuration-tree))
 
+(s/fdef de-nest-component-ctors
+        :args (s/cat :acc (s/tuple ::initialization-map ::system-dependencies)
+                     :cpt ::initialization-map)
+        :ret ::flattened-initialization-map)
+(declare pre-process)
+(defn de-nest-component-ctors
+  "Designed to be the `f` of a reduce.
+
+Takes nested components with their dependencies and recursively promotes them to the top level."
+  [{:keys [structure dependencies]
+    :as acc}
+   [name description]]
+  (println (str "\nde-nesting nested Component description "
+                name " --\n"
+                (with-out-str (pprint description)) "into\n"
+                (with-out-str (pprint acc))))
+  (let [{:keys [::configuration-tree ::primary-component]} description
+        sys-cfg (::system-configuration description)
+        ;; It's very tempting to check whether sys-cfg has any
+        ;; nested component definitions. If it doesn't, then there
+        ;; really isn't any reason to call pre-process here
+        ;; But that check is a big chunk of what makes pre-process
+        ;; interesting.
+        ;; I could refactor that and supply the top-level/nested
+        ;; pieces into pre-process separately. But then the top-level
+        ;; caller needs to know that detail about its implementation.
+        ;; TODO: Add an arity to it that handles this.
+        pre-processed (pre-process sys-cfg
+                                   configuration-tree)
+        nested-description (::description pre-processed)
+        {nested-struct ::structure
+         nested-deps ::dependencies
+         :as de-nested} nested-description
+        duplicates (filter (comp (partial contains? structure)
+                                 key)
+                           nested-struct)]
+    (assert (empty? duplicates) (str "Duplicated keys:\n"
+                                     duplicates
+                                     "\nin\n" structure))
+    (if (or true (not (empty? nested-struct)))
+      (do
+        (println (str "component-dsl.system/de-nest-component-ctors"
+                      "  extracted the nested structure\n"
+                      (with-out-str (pprint nested-struct))
+                      "with dependencies\n"
+                      (with-out-str (pprint nested-deps))))
+        (assoc acc
+               ::dependencies (-> dependencies
+                                  (into (dissoc nested-deps primary-component))
+                                  (resolve-nested-dependencies name primary-component)
+                                  (merge-dependency-trees nested-deps))
+               ::structure (merge-nested-struct structure nested-struct)))
+      (do
+        (println "component-dsl.system/de-nest-component-ctors"
+                 "Hit the bottom")
+        (assert (empty? nested-deps))
+        (assoc acc name description)
+        acc))))
+
 (s/fdef pre-process
         :args (s/cat :description ::system-description
                      :options ::configuration-tree)
@@ -573,13 +590,15 @@ Takes nested components with their dependencies and recursively promotes them to
     (println "pre-processing\n" (with-out-str (pprint nested))
              "\ninto\n" (with-out-str (pprint tops))
              "\nbased on\n" (with-out-str (pprint params)))
-    {::description {::structure (reduce de-nest-component-ctors
+    (let [result-structure (reduce de-nest-component-ctors
                                         tops
-                                        nested)
-                    ::dependencies dependencies}
-     ::options (reduce de-nest-options
-                       options
-                       nested)}))
+                                        nested)]
+      (println "de-nested result:\n"
+               (with-out-str (pprint result-structure)))
+      {::structure result-structure
+       ::options (reduce de-nest-options
+                         options
+                         nested)})))
 
 (s/fdef flatten-options
         :args (s/cat :top-level ::configuration-tree
