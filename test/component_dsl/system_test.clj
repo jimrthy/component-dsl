@@ -75,6 +75,9 @@ TODO: Rename all these tests to .cljc"
                  :routes {:handler (fn [_]
                                      {:code 200
                                       :body "Hello world"})}}]
+    ;; Note that these are really just used internally.
+    ;; They get passed to build and pre-process as 2 separate arguments.
+    ;; Though that's starting to seem a little silly
     {::description description
      ::options options}))
 
@@ -138,12 +141,17 @@ TODO: Rename all these tests to .cljc"
   (let [{:keys [::description ::options]} (hard-coded-nested-structure)]
     (testing "Individual steps that happen during build"
       (try
-        (let [pre-processed (sys/pre-process description)
+        (let [pre-processed (sys/pre-process description options)
               _ (is pre-processed)
-              {:keys [:component-dsl.system/dependencies :component-dsl.system/structure]} pre-processed
-              _ (is dependencies)
+              {:keys [:component-dsl.system/description :component-dsl.system/options]}  pre-processed
+              {:keys [:component-dsl.system/dependencies :component-dsl.system/structure]} description
+              _ (is dependencies (str "Missing dependencies in\n"
+                                      (with-out-str (pprint pre-processed))
+                                      "with keys\n\t" (keys pre-processed)))
               _ (is structure (str "Missing ::structure in\n"
-                                   (with-out-str (pprint pre-processed))))
+                                   (with-out-str (pprint pre-processed))
+                                   "with keys\n\t" (keys pre-processed)))
+              ;; Note that options has been pre-processed now
               pre-init (sys/system-map structure options)
               created (sys/dependencies pre-init dependencies)]
           ;; Q: What about a predicate to ensure that each entry has exactly one match?
@@ -166,6 +174,9 @@ TODO: Rename all these tests to .cljc"
             (.printStackTrace ex)
             (is (not ex))))))))
 (comment (check-manual-build-steps)
+         (let [{:keys [::description ::options]} (hard-coded-nested-structure)]
+           (-> (sys/pre-process description options)
+               :component-dsl.system/description))
          )
 
 (deftest check-manually-nested-components

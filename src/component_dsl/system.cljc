@@ -496,33 +496,74 @@ Takes nested components with their dependencies and recursively promotes them to
   (println (str "\nde-nesting nested Component description " name " --\n" (with-out-str (pprint description))
                 "into\n"
                 (with-out-str (pprint acc))))
-  (let [{:keys [::primary-component]} description
+  (let [{:keys [::configuration-tree ::primary-component]} description
         {nested-struct ::structure
          nested-deps ::dependencies
-         :as de-nested} (pre-process (::system-configuration description))
+         :as de-nested} (pre-process (::system-configuration description)
+                                     configuration-tree)
         duplicates (filter (comp (partial contains? structure) key)
                            nested-struct)]
     (assert (empty? duplicates) (str "Duplicated keys:\n"
                                      duplicates
                                      "\nin\n" structure))
-    (println (str "After pre-processing that description, we extracted the nested structure\n"
-                  (with-out-str (pprint nested-struct))
-                  "with dependencies\n"
-                  (with-out-str (pprint nested-deps))))
-    (assoc acc
-           ::dependencies (-> dependencies
-                              (into (dissoc nested-deps primary-component))
-                              (resolve-nested-dependencies name primary-component)
-                              (merge-dependency-trees nested-deps))
-           ::structure (merge-nested-struct structure nested-struct))))
+    (if (not (empty? nested-struct))
+      (do
+        (println (str "component-dsl.system/pre-process  extracted the nested structure\n"
+                      (with-out-str (pprint nested-struct))
+                      "with dependencies\n"
+                      (with-out-str (pprint nested-deps))))
+        (assoc acc
+               ::dependencies (-> dependencies
+                                  (into (dissoc nested-deps primary-component))
+                                  (resolve-nested-dependencies name primary-component)
+                                  (merge-dependency-trees nested-deps))
+               ::structure (merge-nested-struct structure nested-struct)))
+      (do
+        (println "component-dsl.system/pre-process Hit the bottom")
+        (assert (empty? nested-deps))
+        acc))))
+
+(s/fdef merge-individual-option
+        :args (s/cat :acc ::configuration-tree
+                     :options (s/cat :component-name ::component-name
+                                     :options ::option-map)))
+(defn merge-individual-option
+  "This almost definitely needs to be handled with a zipper"
+  [acc [component-name options]]
+  (update acc component-name
+         #(reduce (fn [acc [k v]]
+                    (if-not (map? v)
+                      (if (contains? acc k)
+                        (get acc k)
+                        v)
+                      (throw (ex-info "Trees will make this interesting"
+                                      {:into acc
+                                       :for component-name
+                                       :merging options}))))
+                  (or % {})
+                  options)))
+
+(s/fdef de-nest-options
+        :args (s/cat :acc ::configuration-tree
+                     :options ::nested-definition)
+        :ret ::configuration-tree)
+(defn de-nest-options
+  "Note that values in the acc override the configuration-tree"
+  [acc [component-name
+        {:keys [::system-configuration ::configuration-tree]
+         :as options}]]
+  ;; Q: Does this need to recurse?
+  (reduce merge-individual-option acc configuration-tree))
 
 (s/fdef pre-process
-        :args (s/cat :description ::system-description)
+        :args (s/cat :description ::system-description
+                     :options ::configuration-tree)
         :ret ::flattened-description)
 (defn pre-process
   "Have to flatten out nested system definitions"
   [{:keys [::structure ::dependencies]
-    :as params}]
+    :as params}
+   options]
   (let [tops (->> structure
                   (filter (comp symbol? second))
                   (into {}))
@@ -532,10 +573,13 @@ Takes nested components with their dependencies and recursively promotes them to
     (println "pre-processing\n" (with-out-str (pprint nested))
              "\ninto\n" (with-out-str (pprint tops))
              "\nbased on\n" (with-out-str (pprint params)))
-    {::structure (reduce de-nest-component-ctors
-                         tops
-                         nested)
-     ::dependencies dependencies}))
+    {::description {::structure (reduce de-nest-component-ctors
+                                        tops
+                                        nested)
+                    ::dependencies dependencies}
+     ::options (reduce de-nest-options
+                       options
+                       nested)}))
 
 (s/fdef flatten-options
         :args (s/cat :top-level ::configuration-tree
