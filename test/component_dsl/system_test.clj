@@ -176,7 +176,10 @@ TODO: Rename all these tests to .cljc"
 (comment (check-manual-build-steps)
          (let [{:keys [::description ::options]} (hard-coded-nested-structure)]
            (-> (sys/pre-process description options)
-               :component-dsl.system/structure))
+               #_:component-dsl.system/options
+               #_keys
+               #_:component-dsl.system/structure
+               :component-dsl.system/dependencies))
          )
 
 (deftest check-manually-nested-components

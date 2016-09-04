@@ -525,7 +525,8 @@ Takes nested components with their dependencies and recursively promotes them to
   [{:keys [structure dependencies]
     :as acc}
    [name description]]
-  (println (str "\nde-nesting nested Component description "
+  (println (str "component-dsl.system/de-nest-component-ctors"
+                "  nested Component description "
                 name " --\n"
                 (with-out-str (pprint description)) "into\n"
                 (with-out-str (pprint acc))))
@@ -545,7 +546,8 @@ Takes nested components with their dependencies and recursively promotes them to
         nested-description (::description pre-processed)
         {nested-struct ::structure
          nested-deps ::dependencies
-         :as de-nested} nested-description
+         :as de-nested} pre-processed
+        tops-to-merge (dissoc pre-processed ::structure ::dependencies ::options)
         duplicates (filter (comp (partial contains? structure)
                                  key)
                            nested-struct)]
@@ -555,16 +557,20 @@ Takes nested components with their dependencies and recursively promotes them to
     (if (or true (not (empty? nested-struct)))
       (do
         (println (str "component-dsl.system/de-nest-component-ctors"
-                      "  extracted the nested structure\n"
+                      " extracted the nested structure\n"
                       (with-out-str (pprint nested-struct))
                       "with dependencies\n"
-                      (with-out-str (pprint nested-deps))))
-        (assoc acc
-               ::dependencies (-> dependencies
-                                  (into (dissoc nested-deps primary-component))
-                                  (resolve-nested-dependencies name primary-component)
-                                  (merge-dependency-trees nested-deps))
-               ::structure (merge-nested-struct structure nested-struct)))
+                      (with-out-str (pprint nested-deps))
+                      "from the raw pre-processed result w/ keys\n\t"
+                      (keys pre-processed)))
+        (comment (assoc acc
+                        ::dependencies (-> dependencies
+                                           (into (dissoc nested-deps primary-component))
+                                           (resolve-nested-dependencies name primary-component)
+                                           (merge-dependency-trees nested-deps))
+                        ::structure (merge-nested-struct structure nested-struct)))
+        (into acc (merge-nested-struct (merge-nested-struct structure tops-to-merge)
+                                       nested-struct)))
       (do
         (println "component-dsl.system/de-nest-component-ctors"
                  "Hit the bottom")
@@ -587,7 +593,8 @@ Takes nested components with their dependencies and recursively promotes them to
         nested (->> structure
                     (filter (comp (complement symbol?) second))
                     (into {}))]
-    (println "pre-processing\n" (with-out-str (pprint nested))
+    (println "component-dsl.system/pre-process\n"
+             (with-out-str (pprint nested))
              "\ninto\n" (with-out-str (pprint tops))
              "\nbased on\n" (with-out-str (pprint params)))
     (let [result-structure (reduce de-nest-component-ctors
