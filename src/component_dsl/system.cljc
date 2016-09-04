@@ -525,7 +525,7 @@ Takes nested components with their dependencies and recursively promotes them to
   [{:keys [structure dependencies]
     :as acc}
    [name description]]
-  (println (str "component-dsl.system/de-nest-component-ctors"
+  (println (str "\ncomponent-dsl.system/de-nest-component-ctors"
                 "  nested Component description "
                 name " --\n"
                 (with-out-str (pprint description)) "into\n"
@@ -554,23 +554,27 @@ Takes nested components with their dependencies and recursively promotes them to
     (assert (empty? duplicates) (str "Duplicated keys:\n"
                                      duplicates
                                      "\nin\n" structure))
-    (println (str "component-dsl.system/de-nest-component-ctors"
-                  " extracted the nested structure\n"
-                  (with-out-str (pprint nested-struct))
-                  "with dependencies\n"
-                  (with-out-str (pprint nested-deps))
-                  "from the raw pre-processed result w/ keys\n\t"
-                  (keys pre-processed)))
-    (comment (assoc acc
-                    ::dependencies (-> dependencies
-                                       (into (dissoc nested-deps primary-component))
-                                       (resolve-nested-dependencies name primary-component)
-                                       (merge-dependency-trees nested-deps))
-                    ::structure (merge-nested-struct structure nested-struct)))
-    (as-> structure x
-        (merge-nested-struct x tops-to-merge)
-        (merge-nested-struct x nested-struct)
-        (merge-nested-struct acc x))))
+    (let [result-struct (as-> structure x
+                          ;; It seems wrong that we have dependencies here
+                          ;; There's weird duplication happening
+                          (dissoc x ::dependencies)
+                          (merge-nested-struct x tops-to-merge)
+                          (merge-nested-struct x nested-struct)
+                          (merge-nested-struct acc x))]
+      (println (str "\ncomponent-dsl.system/de-nest-component-ctors"
+                    " extracted the nested structure\n"
+                    (with-out-str (pprint nested-struct))
+                    "and built it into\n"
+                    (with-out-str (pprint result-struct))
+                    "with dependencies\n"
+                    (with-out-str (pprint nested-deps))
+                    "from the raw pre-processed result w/ keys\n\t"
+                    (keys pre-processed)))
+      (assoc result-struct
+             ::dependencies (-> dependencies
+                                (into (dissoc nested-deps primary-component))
+                                (resolve-nested-dependencies name primary-component)
+                                (merge-dependency-trees nested-deps))))))
 
 (s/fdef pre-process
         :args (s/cat :description ::system-description
@@ -580,6 +584,8 @@ Takes nested components with their dependencies and recursively promotes them to
   "Have to flatten out nested system definitions"
   [{:keys [::structure ::dependencies]
     :as params}
+   ;; Q: How much easier would life be if I just included
+   ;; this as another key in params?
    options]
   (let [tops (->> structure
                   (filter (comp symbol? second))
@@ -587,19 +593,25 @@ Takes nested components with their dependencies and recursively promotes them to
         nested (->> structure
                     (filter (comp (complement symbol?) second))
                     (into {}))]
-    (println "component-dsl.system/pre-process\n"
+    (println "\ncomponent-dsl.system/pre-process\n"
              (with-out-str (pprint nested))
-             "\ninto\n" (with-out-str (pprint tops))
+             "into\n" (with-out-str (pprint tops))
              "\nbased on\n" (with-out-str (pprint params)))
-    (let [result-structure (reduce de-nest-component-ctors
-                                        tops
-                                        nested)]
-      (println "de-nested result:\n"
-               (with-out-str (pprint result-structure)))
-      {::structure result-structure
+    (comment
+      {::structure (reduce de-nest-component-ctors
+                           tops
+                           nested)
+       ::dependencies dependencies
        ::options (reduce de-nest-options
                          options
-                         nested)})))
+                         nested)})
+    (assoc (reduce de-nest-component-ctors
+                   {::structure tops
+                    ::dependencies dependencies}
+                   nested)
+           ::options (reduce de-nest-options
+                             options
+                             nested))))
 
 (s/fdef flatten-options
         :args (s/cat :top-level ::configuration-tree
