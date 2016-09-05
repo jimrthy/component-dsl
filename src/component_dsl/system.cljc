@@ -1,6 +1,5 @@
 (ns component-dsl.system
   (:require [#?(:clj clojure.edn) #?(:cljs cljs.reader) :as edn]
-            #_[clojure.java.io :as io]
             [#?(:clj clojure.pprint) #?(:cljs cljs.pprint) :refer (pprint)]
             [clojure.spec :as s]
             [com.stuartsierra.component :as component #?@(:cljs [:refer [SystemMap]])]
@@ -522,7 +521,7 @@ and should return
   "Designed to be the `f` of a reduce.
 
 Takes nested components with their dependencies and recursively promotes them to the top level."
-  [{:keys [structure dependencies]
+  [{:keys [::structure ::dependencies]
     :as acc}
    [name description]]
   (println (str "\ncomponent-dsl.system/de-nest-component-ctors"
@@ -551,30 +550,30 @@ Takes nested components with their dependencies and recursively promotes them to
         duplicates (filter (comp (partial contains? structure)
                                  key)
                            nested-struct)]
-    (assert (empty? duplicates) (str "Duplicated keys:\n"
-                                     duplicates
-                                     "\nin\n" structure))
+    (when-not (empty? duplicates)
+      (throw (ex-info (str "Can't deal with duplicate component key names.\n"
+                           "Try namespacing the nested ones")
+                      {:duplicates duplicates
+                       :structure structure})))
     (let [result-struct (as-> structure x
-                          ;; It seems wrong that we have dependencies here
-                          ;; There's weird duplication happening
-                          (dissoc x ::dependencies)
                           (merge-nested-struct x tops-to-merge)
-                          (merge-nested-struct x nested-struct)
-                          (merge-nested-struct acc x))]
+                          (merge-nested-struct x nested-struct))]
       (println (str "\ncomponent-dsl.system/de-nest-component-ctors"
                     " extracted the nested structure\n"
                     (with-out-str (pprint nested-struct))
+                    "from the original\n"
+                    (with-out-str (pprint structure))
                     "and built it into\n"
                     (with-out-str (pprint result-struct))
                     "with dependencies\n"
                     (with-out-str (pprint nested-deps))
                     "from the raw pre-processed result w/ keys\n\t"
                     (keys pre-processed)))
-      (assoc result-struct
-             ::dependencies (-> dependencies
-                                (into (dissoc nested-deps primary-component))
-                                (resolve-nested-dependencies name primary-component)
-                                (merge-dependency-trees nested-deps))))))
+      {::structure result-struct
+       ::dependencies (-> dependencies
+                          (into (dissoc nested-deps primary-component))
+                          (resolve-nested-dependencies name primary-component)
+                          (merge-dependency-trees nested-deps))})))
 
 (s/fdef pre-process
         :args (s/cat :description ::system-description
@@ -605,13 +604,16 @@ Takes nested components with their dependencies and recursively promotes them to
        ::options (reduce de-nest-options
                          options
                          nested)})
-    (assoc (reduce de-nest-component-ctors
-                   {::structure tops
-                    ::dependencies dependencies}
-                   nested)
-           ::options (reduce de-nest-options
-                             options
-                             nested))))
+    (let [de-nested (reduce de-nest-component-ctors
+                            {::structure tops
+                             ::dependencies dependencies}
+                            nested)]
+      (println "\ncomponent-dsl.system/pre-process de-nested:\n"
+               (with-out-str (pprint de-nested)))
+      (assoc de-nested
+             ::options (reduce de-nest-options
+                               options
+                               nested)))))
 
 (s/fdef flatten-options
         :args (s/cat :top-level ::configuration-tree

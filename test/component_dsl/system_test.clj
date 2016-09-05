@@ -58,10 +58,10 @@ TODO: Rename all these tests to .cljc"
 (defn hard-coded-nested-structure
   []
   (let [nested-struct '{::database component-dsl.example-db/ctor
-                        :schema component-dsl.example-db/schema-builder}
-        nested-deps {:schema {:database ::database}}
+                        ::schema component-dsl.example-db/schema-builder}
+        nested-deps {::schema {:database ::database}}
         nested-opts {::database {:url "http://database:2020/connection"}
-                     :schema {:definition "http://database/schema.html"}}
+                     ::schema {:definition "http://database/schema.html"}}
         nested #:component-dsl.system{:system-configuration #:component-dsl.system{:structure nested-struct
                                                                                    :dependencies nested-deps}
                                       :configuration-tree nested-opts
@@ -177,7 +177,7 @@ TODO: Rename all these tests to .cljc"
          (let [{:keys [::description ::options]} (hard-coded-nested-structure)]
            (let [x
                  (->> (sys/pre-process description options)
-                      #_:component-dsl.system/options
+                      :component-dsl.system/options
                       #_keys
                       #_:component-dsl.system/structure
                       #_:component-dsl.system/dependencies
