@@ -38,11 +38,11 @@ TODO: Rename all these tests to .cljc"
 
 (defn nested-components
   []
-  (let [descr {:component-dsl.system/structure '{:database component-dsl.example-db/ctor
-                                                 :schema component-dsl.example-db/schema-builder}
-               :component-dsl.system/dependencies {:schema [:database]}}
-        options {:database {:url "http://database:2020/connection"}
-                 :schema {:definition "http://database/schema.html"}}
+  (let [descr {:component-dsl.system/structure '{::database component-dsl.example-db/ctor
+                                                 ::schema component-dsl.example-db/schema-builder}
+               :component-dsl.system/dependencies {::schema {:db ::database}}}
+        options {::database {:url "http://database:2020/connection"}
+                 ::schema {:definition "http://database/schema.html"}}
         basic-structure (simple-web-components)]
     {:description {:component-dsl.system/structure (assoc basic-structure
                                                           :nested {:component-dsl.system/system-configuration descr
@@ -141,10 +141,11 @@ TODO: Rename all these tests to .cljc"
   (let [{:keys [::description ::options]} (hard-coded-nested-structure)]
     (testing "Individual steps that happen during build"
       (try
-        (let [pre-processed (sys/pre-process description options)
+        (let [pre-processed (sys/pre-process (assoc description ::options options))
               _ (is pre-processed)
-              {:keys [:component-dsl.system/description :component-dsl.system/options]}  pre-processed
-              {:keys [:component-dsl.system/dependencies :component-dsl.system/structure]} description
+              {:keys [:component-dsl.system/dependencies
+                      :component-dsl.system/structure
+                      :component-dsl.system/options]}  pre-processed
               _ (is dependencies (str "Missing dependencies in\n"
                                       (with-out-str (pprint pre-processed))
                                       "with keys\n\t" (keys pre-processed)))
@@ -153,19 +154,30 @@ TODO: Rename all these tests to .cljc"
                                    "with keys\n\t" (keys pre-processed)))
               ;; Note that options has been pre-processed now
               pre-init (sys/system-map structure options)
-              created (sys/dependencies pre-init dependencies)]
-          ;; Q: What about a predicate to ensure that each entry has exactly one match?
-          ;; Q: Is there a good short-hand for specifying the namespace on the keywords to
-          ;; this set?
-          ;; Working with this at the REPL doesn't seem like it's going to be a lot of fun.
-          ;; Maybe I don't want to mess w/ trying to keyword these at al.
-          (is (= #{:web :routes
-                   :database :schema}
-                 (set (keys created))))
-          (let [actual-db (:database created)]
-            (is actual-db)
-            (is (= actual-db (-> created :routes :database)))
-            (is (= actual-db (-> created :schema :database)))))
+              created (sys/dependencies pre-init dependencies)
+              started (component/start created)]
+          (try
+            ;; Q: What about a predicate to ensure that each entry has exactly one match?
+            ;; Q: Is there a good short-hand for specifying the namespace on the keywords to
+            ;; this set?
+            ;; Working with this at the REPL doesn't seem like it's going to be a lot of fun.
+            ;; Maybe I don't want to mess w/ trying to keyword these at al.
+            (is (= #{:web :routes
+                     ::database ::schema}
+                   (set (keys started))))
+            (let [actual-db (::database started)]
+              (is actual-db)
+              (is (= actual-db (-> started :routes :nested))
+                  (str "Database assigned to routes does not match\n"
+                       "Available keys: "
+                       (keys (:routes started))))
+              ;; This is getting translated to :nested, even though it definitely shouldn't be.
+              ;; I'm also getting an extra key that's an empty hash-map
+              (is (= actual-db (-> started :schema :db))
+                  (str "Database assigned to schema does not match\n"
+                       "Available keys: "
+                       (keys (:routes started)))))
+            (finally (component/stop started))))
         (catch clojure.lang.ExceptionInfo ex
           (println "Failed:" (.getMessage ex))
           (let [failure-details (.getData ex)]
@@ -203,12 +215,12 @@ Starting manual nesting test
           ;; Working with this at the REPL doesn't seem like it's going to be a lot of fun.
           ;; Maybe I don't want to mess w/ trying to keyword these at al.
           (is (= #{:web :routes
-                   :database :schema}
+                   ::database ::schema}
                  (set (keys created))))
-          (let [actual-db (:database created)]
+          (let [actual-db (::database created)]
             (is actual-db)
-            (is (= actual-db (-> created :routes :database)))
-            (is (= actual-db (-> created :schema :database)))))
+            (is (= actual-db (-> created :routes :nested)))
+            (is (= actual-db (-> created ::schema :database)))))
         (catch clojure.lang.ExceptionInfo ex
           (println "Failed:" (.getMessage ex))
           (let [failure-details (.getData ex)]
@@ -231,7 +243,7 @@ Starting manual nesting test
         (is (= #{:web :routes :database :schema} (set (keys created))))
         (let [actual-db (:database created)]
           (is actual-db)
-          (is (= actual-db (-> created :routes :database)))
+          (is (= actual-db (-> created :routes keys)))
           (is (= actual-db (-> created :schema :database)))))
       (catch clojure.lang.ExceptionInfo ex
         (println "Failed:" (.getMessage ex))

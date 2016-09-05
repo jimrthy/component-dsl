@@ -541,8 +541,8 @@ Takes nested components with their dependencies and recursively promotes them to
         ;; pieces into pre-process separately. But then the top-level
         ;; caller needs to know that detail about its implementation.
         ;; TODO: Add an arity to it that handles this.
-        pre-processed (pre-process sys-cfg
-                                   configuration-tree)
+        pre-processed (pre-process (assoc sys-cfg ::options
+                                          configuration-tree))
         nested-description (::description pre-processed)
         {nested-struct ::structure
          nested-deps ::dependencies
@@ -582,11 +582,8 @@ Takes nested components with their dependencies and recursively promotes them to
         :ret ::flattened-description)
 (defn pre-process
   "Have to flatten out nested system definitions"
-  [{:keys [::structure ::dependencies]
-    :as params}
-   ;; Q: How much easier would life be if I just included
-   ;; this as another key in params?
-   options]
+  [{:keys [::structure ::dependencies ::options]
+    :as params}]
   (let [tops (->> structure
                   (filter (comp symbol? second))
                   (into {}))
@@ -631,6 +628,7 @@ traversing it twice...that's the sort of problem that I think I'd like to be sol
 
 TODO: Worry about that when the baseline works."
   [top-level component-tree]
+  (throw (ex-info "Obsolete" {:why "Wound up being easier to do all at once after all"}))
   (println "Overriding the options from\n"
            (with-out-str (pprint component-tree))
            "\nwith\n"
@@ -649,9 +647,9 @@ TODO: Worry about that when the baseline works."
   "Returns a System that's ready to start"
   [descr options]
   (println "Building a system from keys" (keys descr))
-  (let [pre-processed (pre-process descr)
+  (let [pre-processed (pre-process (assoc descr ::options options))
         ;;flattened-options (flatten-options options descr)
-        pre-init (system-map (::structure pre-processed) #_flattened-options options)]
+        pre-init (system-map (::structure pre-processed) (::options pre-processed options))]
     (dependencies pre-init (::dependencies pre-processed))))
 
 (s/fdef ctor
