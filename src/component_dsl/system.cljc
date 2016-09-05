@@ -488,17 +488,18 @@ and should return
   "This almost definitely needs to be handled with a zipper"
   [acc [component-name options]]
   (update acc component-name
-         #(reduce (fn [acc [k v]]
-                    (if-not (map? v)
-                      (if (contains? acc k)
-                        (get acc k)
-                        v)
-                      (throw (ex-info "Trees will make this interesting"
-                                      {:into acc
-                                       :for component-name
-                                       :merging options}))))
-                  (or % {})
-                  options)))
+          #(reduce (fn [acc [k v]]
+                     (assoc acc k
+                            (if-not (map? v)
+                              (if (contains? acc k)
+                                (get acc k)
+                                v)
+                              (throw (ex-info "Trees will make this interesting"
+                                              {:into acc
+                                               :for component-name
+                                               :merging options})))))
+                   (or % {})
+                   options)))
 
 (s/fdef de-nest-options
         :args (s/cat :acc ::configuration-tree
