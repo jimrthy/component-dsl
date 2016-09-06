@@ -43,12 +43,14 @@ TODO: Rename all these tests to .cljc"
                :component-dsl.system/dependencies {::schema {:db ::database}}}
         options {::database {:url "http://database:2020/connection"}
                  ::schema {:definition "http://database/schema.html"}}
-        basic-structure (simple-web-components)]
+        basic-structure (simple-web-components)
+        nested-wrapper #:component-dsl.system{:system-configuration descr
+                                              :configuration-tree options
+                                              :primary-component ::database}]
     {:description {:component-dsl.system/structure (assoc basic-structure
-                                                          :nested {:component-dsl.system/system-configuration descr
-                                                                   :component-dsl.system/configuration-tree options})
+                                                          :nested nested-wrapper)
                    :component-dsl.system/dependencies {:web [:routes]
-                                                       :routes [:database]}}
+                                                       :routes [:nested]}}
      :options {:web {:port 2600
                      :resource-route "/home/www/public/"}
                :routes {:handler (fn [_]
@@ -59,7 +61,7 @@ TODO: Rename all these tests to .cljc"
   []
   (let [nested-struct '{::database component-dsl.example-db/ctor
                         ::schema component-dsl.example-db/schema-builder}
-        nested-deps {::schema {:database ::database}}
+        nested-deps {::schema {:db ::database}}
         nested-opts {::database {:url "http://database:2020/connection"}
                      ::schema {:definition "http://database/schema.html"}}
         nested #:component-dsl.system{:system-configuration #:component-dsl.system{:structure nested-struct
@@ -173,10 +175,10 @@ TODO: Rename all these tests to .cljc"
                        (keys (:routes started))))
               ;; This is getting translated to :nested, even though it definitely shouldn't be.
               ;; I'm also getting an extra key that's an empty hash-map
-              (is (= actual-db (-> started :schema :db))
+              (is (= actual-db (-> started ::schema :db))
                   (str "Database assigned to schema does not match\n"
-                       "Available keys: "
-                       (keys (:routes started)))))
+                       "schema:\n"
+                       (with-out-str (pprint (::schema started))))))
             (finally (component/stop started))))
         (catch clojure.lang.ExceptionInfo ex
           (println "Failed:" (.getMessage ex))
@@ -208,19 +210,25 @@ Starting manual nesting test
 ***********************************************************")
     (let [{:keys [::description ::options]} (hard-coded-nested-structure)]
       (try
-        (let [created (sys/build description options)]
-          ;; Q: What about a predicate to ensure that each entry has exactly one match?
-          ;; Q: Is there a good short-hand for specifying the namespace on the keywords to
-          ;; this set?
-          ;; Working with this at the REPL doesn't seem like it's going to be a lot of fun.
-          ;; Maybe I don't want to mess w/ trying to keyword these at al.
-          (is (= #{:web :routes
-                   ::database ::schema}
-                 (set (keys created))))
-          (let [actual-db (::database created)]
-            (is actual-db)
-            (is (= actual-db (-> created :routes :nested)))
-            (is (= actual-db (-> created ::schema :database)))))
+        (let [created (sys/build description options)
+              started (component/start created)]
+          (try
+            ;; Q: What about a predicate to ensure that each entry has exactly one match?
+            ;; Q: Is there a good short-hand for specifying the namespace on the keywords to
+            ;; this set?
+            ;; Working with this at the REPL doesn't seem like it's going to be a lot of fun.
+            ;; Maybe I don't want to mess w/ trying to keyword these at al.
+            (is (= #{:web :routes
+                     ::database ::schema}
+                   (set (keys started))))
+            (let [actual-db (::database started)]
+              (is actual-db)
+              (is (= actual-db (-> started :routes :nested)))
+              (is (= actual-db (-> started ::schema :db))))
+            (finally
+              ;; Not really needed for this test, but it's a really good
+              ;; general habit
+              (component/stop started))))
         (catch clojure.lang.ExceptionInfo ex
           (println "Failed:" (.getMessage ex))
           (let [failure-details (.getData ex)]
@@ -238,13 +246,17 @@ Starting manual nesting test
 (deftest check-nested-components
   (let [descr (nested-components)]
     (try
-      (let [created (sys/build (:description descr) (:options descr))]
-        ;; Q: What about a predicate to ensure that each entry has a match?
-        (is (= #{:web :routes :database :schema} (set (keys created))))
-        (let [actual-db (:database created)]
-          (is actual-db)
-          (is (= actual-db (-> created :routes keys)))
-          (is (= actual-db (-> created :schema :database)))))
+      (let [created (sys/build (:description descr) (:options descr))
+            started (component/start created)]
+        (try
+          ;; Q: What about a predicate to ensure that each entry has a match?
+          (is (= #{:web :routes ::database ::schema} (set (keys created))))
+          (let [actual-db (::database created)]
+            (is actual-db)
+            (is (= actual-db (-> started :routes :nested)))
+            (is (= actual-db (-> started ::schema :db))))
+          (finally
+            (component/stop created))))
       (catch clojure.lang.ExceptionInfo ex
         (println "Failed:" (.getMessage ex))
         (let [failure-details (.getData ex)]
@@ -253,27 +265,35 @@ Starting manual nesting test
           (.printStackTrace ex)
           (is (not ex)))))))
 (comment
+  (pprint (nested-components))
   (let [descr (nested-components)]
-    (comment (try
-               (let [created (sys/build (:description descr) (:options descr))]
-                 (try
-                   ;; Q: What about a predicate to ensure that each entry has a match?
-                   ;; This would almost be an inversion of every?.
-                   ;; Surely there's a core function for this.
-                   (keys created)
-                   (-> descr :description :component-dsl.system/dependencies)
-                   (-> created :routes keys)
-                   (catch clojure.lang.ExceptionInfo ex
-                     (println "Failed after building")
-                     (println (.getMessage ex))
-                     (pprint (.getData ex)))))
-               (catch clojure.lang.ExceptionInfo ex
-                 (println "Failed during creation")
-                 (println (.getMessage ex))
-                 (pprint (.getData ex))
-                 (.printStackTrace ex)
-                 )))
-    (keys (:description descr)))
+    (comment) (try
+                (let [created (sys/build (:description descr) (:options descr))]
+                  #_(try
+                    (let [started (component/start created)]
+                      (try
+                        ;; Q: What about a predicate to ensure that each entry has a match?
+                        ;; This would almost be an inversion of every?.
+                        ;; Surely there's a core function for this.
+                        (keys started)
+                        (-> descr :description :component-dsl.system/dependencies)
+                        (-> started :routes keys)
+                        (catch clojure.lang.ExceptionInfo ex
+                          (println "Failed after building")
+                          (println (.getMessage ex))
+                          (pprint (.getData ex)))))
+                    (catch clojure.lang.ExceptionInfo ex
+                      (println "Failed during creation")
+                      (println (.getMessage ex))
+                      (pprint (.getData ex))
+                      (.printStackTrace ex)))
+                  (-> created ::schema meta))
+                (catch clojure.lang.ExceptionInfo ex
+                  (println "Failed during creation")
+                  (println (.getMessage ex))
+                  (pprint (.getData ex))
+                  (.printStackTrace ex)))
+    #_(keys (:description descr)))
   )
 
 (deftest check-configuration-override
@@ -284,11 +304,17 @@ Starting manual nesting test
   ;; app will actually interact with
   (let [raw-descr (nested-components)
         url-override "tcp://database:2020/prod-connection"
-        descr (assoc-in raw-descr [:options :database :url] url-override)
+        descr (assoc-in raw-descr [:options ::database :url] url-override)
         built (sys/build (:description descr) (:options descr))]
-    (is (= url-override (-> built :database :url)))))
+    (is built)
+    (is (= url-override (-> built ::database :url)))))
 (comment
   (check-configuration-override)
+  (let [raw-descr (nested-components)
+        url-override "tcp://database:2020/prod-connection"
+        descr (assoc-in raw-descr [:options ::database :url] url-override)
+        built (sys/build (:description descr) (:options descr))]
+    (-> built keys))
   )
 
 (deftest parameter-creation
