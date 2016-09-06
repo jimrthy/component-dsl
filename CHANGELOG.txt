@@ -1,5 +1,8 @@
+2016-SEP-05
+Let it cope w/ nested components
+
 2016-APR-23
-Added a context manager wrapper.
+Added a monadic context manager wrapper
 
 2015-DEC-18
 Preliminary clojurescript support
