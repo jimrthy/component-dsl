@@ -136,8 +136,7 @@ TODO: Rename all these tests to .cljc"
                   :nested/schema {:database :nested/database}
                   :unrelated {:in-parent :in-parent}}
                  resolved)))))))
-(comment (check-nested-dependency-resolution)
-         )
+(comment (check-nested-dependency-resolution))
 
 (deftest check-manual-build-steps
   (let [{:keys [::description ::options]} (hard-coded-nested-structure)]
@@ -242,7 +241,6 @@ Starting manual nesting test
 ;;; This should really be a duplicate of check-manually-nested-components.
 ;;; I'm just being more "clever" about building the actual component tree
 ;;; definitions, in an attempt to avoid duplicate code.
-;;; Isn't worth the effort
 (deftest check-nested-components
   (let [descr (nested-components)]
     (try

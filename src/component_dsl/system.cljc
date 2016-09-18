@@ -4,7 +4,9 @@
             [clojure.spec :as s]
             [com.stuartsierra.component :as component #?@(:cljs [:refer [SystemMap]])]
             [component-dsl.management :as mgt])
-  #?(:clj (:import [com.stuartsierra.component SystemMap])))
+  #?(:clj (:import [com.stuartsierra.component SystemMap]
+                   clojure.lang.ExceptionInfo))
+  #?(:cljs (throw (ex-info "What is the ExceptionInfo equivalent?"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Specs
@@ -64,8 +66,9 @@
                                               ;; Ah, well. If you're writing something trivial, don't use this.
                                               ::dependencies ::system-dependencies}))
 
-(s/def ::system-description (s/keys ::req {::structure ::initialization-map
-                                           ::dependencies ::system-dependencies}))
+(s/def ::structure ::initialization-map)
+(s/def ::dependencies ::system-dependencies)
+(s/def ::system-description (s/keys ::req {::structure ::dependencies}))
 
 ;; key-value pairs that are suitable for passing to dependencies
 ;; as the last argument of apply.
@@ -576,6 +579,58 @@ Takes nested components with their dependencies and recursively promotes them to
                           (resolve-nested-dependencies name primary-component)
                           (merge-dependency-trees nested-deps))})))
 
+(s/fdef split-nested-definers
+        :args (s/cat :struct ::structure)
+        :ret (s/keys :req [::tops ::definers])
+        :fn (fn [x]
+              (= (-> x :args :struct)
+                 (merge (-> x :ret ::tops)
+                        (-> x :ret ::definers)))))
+(defn split-nested-definers
+  "Top-level function definitions might be Component constructors. Or they might return nested definitions.
+
+Distinguish one from the other here."
+  [struct]
+  (reduce (fn [{:keys [::tops ::definers] :as acc}
+               [k ctor]]
+            (try
+              (let [spec (s/form ctor)]
+                (try
+                  ;; Which fields are required to be in the return value?
+                  (let [req-ret-spec (->> spec
+                                          (drop 1)
+                                          (partition 2)
+                                          (filter #(= :ret (first %)))
+                                          first  ;; We'll only get one result...right?
+                                          second
+                                          (drop 1)
+                                          (partition 2)
+                                          (filter #(= :req (first %)))
+                                          first second)]
+                    (if (contains? req-ret-spec ::description)
+                      ;; If the "ctor" returns a ::description, it's actually a function that
+                      ;; defines nested components
+                      (update acc ::definers assoc k ctor)
+                      (update acc ::tops assoc k ctor)))
+                  (catch Exception ex
+                    (throw (ex-info "Inner failure manipulating spec"
+                                    {:failure ex
+                                     :problem-key k
+                                     :problem-ctor ctor
+                                     :stack-trace (.getStackTrace ex)})))))
+              (catch ExceptionInfo ex
+                ;; Really just a wrapper to keep the outer Exception handler from catching anything
+                ;; except the spec-location error
+                (throw ex))
+              (catch Exception ex
+                ;; No associated spec. Assume this is a standard ctor
+                (println (str "Fail:" ex
+                              "\nAssume this means we couldn't extract the spec, so it's a regular ctor"
+                              "\nProblem: " k " => " ctor))
+                (update acc ::tops assoc k ctor))))
+          {::tops {}
+           ::definers {}}))
+
 (s/fdef pre-process
         :args (s/cat :description ::system-description
                      :options ::configuration-tree)
@@ -584,24 +639,17 @@ Takes nested components with their dependencies and recursively promotes them to
   "Have to flatten out nested system definitions"
   [{:keys [::structure ::dependencies ::options]
     :as params}]
-  (let [tops (->> structure
-                  (filter (comp symbol? second))
-                  (into {}))
+  (let [true-tops (->> structure
+                       (filter (comp symbol? second))
+                       (into {}))
+        {:keys [::tops ::definers]} (split-nested-definers true-tops)
         nested (->> structure
                     (filter (comp (complement symbol?) second))
-                    (into {}))]
+                    (into definers))]
     (println "\ncomponent-dsl.system/pre-process\n"
              (with-out-str (pprint nested))
              "into\n" (with-out-str (pprint tops))
              "\nbased on\n" (with-out-str (pprint params)))
-    (comment
-      {::structure (reduce de-nest-component-ctors
-                           tops
-                           nested)
-       ::dependencies dependencies
-       ::options (reduce de-nest-options
-                         options
-                         nested)})
     (let [de-nested (reduce de-nest-component-ctors
                             {::structure tops
                              ::dependencies dependencies}
