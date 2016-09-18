@@ -591,45 +591,63 @@ Takes nested components with their dependencies and recursively promotes them to
 
 Distinguish one from the other here."
   [struct]
+  (println "Splitting nested definers from:\n"
+           (with-out-str (pprint struct)))
   (reduce (fn [{:keys [::tops ::definers] :as acc}
                [k ctor]]
-            (try
-              (let [spec (s/form ctor)]
-                (try
-                  ;; Which fields are required to be in the return value?
-                  (let [req-ret-spec (->> spec
-                                          (drop 1)
-                                          (partition 2)
-                                          (filter #(= :ret (first %)))
-                                          first  ;; We'll only get one result...right?
-                                          second
-                                          (drop 1)
-                                          (partition 2)
-                                          (filter #(= :req (first %)))
-                                          first second)]
-                    (if (contains? req-ret-spec ::description)
-                      ;; If the "ctor" returns a ::description, it's actually a function that
-                      ;; defines nested components
-                      (update acc ::definers assoc k ctor)
-                      (update acc ::tops assoc k ctor)))
-                  (catch Exception ex
-                    (throw (ex-info "Inner failure manipulating spec"
-                                    {:failure ex
-                                     :problem-key k
-                                     :problem-ctor ctor
-                                     :stack-trace (.getStackTrace ex)})))))
-              (catch ExceptionInfo ex
-                ;; Really just a wrapper to keep the outer Exception handler from catching anything
-                ;; except the spec-location error
-                (throw ex))
-              (catch Exception ex
-                ;; No associated spec. Assume this is a standard ctor
-                (println (str "Fail:" ex
-                              "\nAssume this means we couldn't extract the spec, so it's a regular ctor"
-                              "\nProblem: " k " => " ctor))
-                (update acc ::tops assoc k ctor))))
+            (let [dst (or (try
+                            (let [spec (s/form ctor)]
+                              (try
+                                ;; Which fields are required to be in the return value?
+                                (let [ret-spec-seq (->> spec
+                                                        (drop 1)
+                                                        (partition 2)
+                                                        (filter #(= :ret (first %))))]
+                                  (when (seq? ret-spec-seq)
+                                    (comment) (println (str "Extracting the ret-spec from the ret-spec-seq:"
+                                                            "\nfor " k " => " ctor
+                                                            "\ninside\n"
+                                                            (with-out-str (pprint struct))))
+                                    (let [ret-spec (-> ret-spec-seq
+                                                       first ;; We'll only get one result...right?
+                                                       second)]
+                                      (println "Return spec: " ret-spec)
+                                      (when (seq? ret-spec)
+                                        (let [req-ret-spec-seq (->> ret-spec
+                                                                    (drop 1)
+                                                                    (partition 2)
+                                                                    (filter #(= :req (first %))))]
+                                          (println "Required seq of the return spec map: " req-ret-spec-seq)
+                                          (when (seq? req-ret-spec-seq)
+                                            (let [req-ret-spec (-> req-ret-spec-seq first second)]
+                                              (println "Required keys of the return spec map: " req-ret-spec)
+                                              (when (and (contains? req-ret-spec ::description)
+                                                         (contains? req-ret-spec ::primary-component))
+                                                ;; If the "ctor" returns a ::description, it's actually a function that
+                                                ;; defines nested components.
+                                                ;; This is the interesting case
+                                                (println "Found a nested definer:" k "=>" ctor)
+                                                ::definers))))))))
+                                (catch Exception ex
+                                  (throw (ex-info "Inner failure manipulating spec"
+                                                  {:failure ex
+                                                   :problem-key k
+                                                   :problem-ctor ctor
+                                                   :stack-trace (.getStackTrace ex)})))))
+                            (catch ExceptionInfo ex
+                              ;; Really just a wrapper to keep the outer Exception handler from catching anything
+                              ;; except the spec-location error
+                              (throw ex))
+                            (catch Exception ex
+                              ;; No associated spec. Assume this is a standard ctor
+                              (println (str "Non-failure: " ex " => "(.getMessage ex)
+                                            "\nAssume this means we couldn't extract the spec, so it's a regular ctor"
+                                            "\nProblem: " k " => " ctor))))
+                          ::tops)]
+              (update acc dst assoc k ctor)))
           {::tops {}
-           ::definers {}}))
+           ::definers {}}
+          struct))
 
 (s/fdef pre-process
         :args (s/cat :description ::system-description
@@ -643,6 +661,15 @@ Distinguish one from the other here."
                        (filter (comp symbol? second))
                        (into {}))
         {:keys [::tops ::definers]} (split-nested-definers true-tops)
+        _ (when-not (empty? definers)
+          (throw (ex-info (str "Need to use\n"
+                               definers
+                               "\nand their associated options from\n"
+                               (with-out-str (pprint options))
+                               "to build the baseline nested dependencies")
+                          {:problem :not-implemented
+                           :definers definers
+                           :options options})))
         nested (->> structure
                     (filter (comp (complement symbol?) second))
                     (into definers))]

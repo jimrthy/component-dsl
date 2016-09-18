@@ -57,17 +57,24 @@ TODO: Rename all these tests to .cljc"
                                    {:code 200
                                     :body "Hello world"})}}}))
 
-(defn hard-coded-nested-structure
-  []
+(s/fdef nested-struct-builder
+        :args (s/cat :options any?)
+        :ret :component-dsl.system/nested-definition)
+(defn nested-struct-builder
+  [_]
   (let [nested-struct '{::database component-dsl.example-db/ctor
                         ::schema component-dsl.example-db/schema-builder}
         nested-deps {::schema {:db ::database}}
         nested-opts {::database {:url "http://database:2020/connection"}
-                     ::schema {:definition "http://database/schema.html"}}
-        nested #:component-dsl.system{:system-configuration #:component-dsl.system{:structure nested-struct
-                                                                                   :dependencies nested-deps}
-                                      :configuration-tree nested-opts
-                                      :primary-component ::database}
+                     ::schema {:definition "http://database/schema.html"}}]
+    #:component-dsl.system{:system-configuration #:component-dsl.system{:structure nested-struct
+                                                                        :dependencies nested-deps}
+                           :configuration-tree nested-opts
+                           :primary-component ::database}))
+
+(defn hard-coded-nested-structure
+  []
+  (let [nested (nested-struct-builder nil)
         description `#:component-dsl.system{:structure {:web component-dsl.core/ctor,
                                                         :routes component-dsl.routes/ctor,
                                                         :nested ~nested},
@@ -235,7 +242,26 @@ Starting manual nesting test
             (pprint failure-details)
             (.printStackTrace ex)
             (is (not ex))))))))
-(comment (check-manually-nested-components)
+(comment (check-manually-nested-components))
+
+(deftest nested-builder
+  (let [struct #:component-dsl.system{:structure '{:nested component-dsl.system-test/nested-struct-builder
+                                                   :web component-dsl.core/ctor
+                                                   :routes component-dsl.routes/ctor}
+                                      :dependencies {:web [:routes],
+                                                     :routes [:nested]}}
+        options {:web {:port 2600, :resource-route "/home/www/public/"},
+                 :routes {:handler (fn [_]
+                                     {:code 200
+                                      :body "Hello world"})}
+                 :nested {:url "http://database:32020/override"}}]
+    (testing "Use a struct builder as a nested ctor"
+      (let [created (sys/build struct options)
+            started (component/start created)]
+        (try
+          (is (=  (-> started ::database :url) "http://database:32020/override"))
+          (finally (component/stop started)))))))
+(comment (nested-builder)
          )
 
 ;;; This should really be a duplicate of check-manually-nested-components.
