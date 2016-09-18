@@ -58,10 +58,10 @@ TODO: Rename all these tests to .cljc"
                                     :body "Hello world"})}}}))
 
 (s/fdef nested-struct-builder
-        :args (s/cat :options any?)
+        :args ()
         :ret :component-dsl.system/nested-definition)
 (defn nested-struct-builder
-  [_]
+  []
   (let [nested-struct '{::database component-dsl.example-db/ctor
                         ::schema component-dsl.example-db/schema-builder}
         nested-deps {::schema {:db ::database}}
@@ -74,7 +74,7 @@ TODO: Rename all these tests to .cljc"
 
 (defn hard-coded-nested-structure
   []
-  (let [nested (nested-struct-builder nil)
+  (let [nested (nested-struct-builder)
         description `#:component-dsl.system{:structure {:web component-dsl.core/ctor,
                                                         :routes component-dsl.routes/ctor,
                                                         :nested ~nested},
@@ -256,11 +256,20 @@ Starting manual nesting test
                                       :body "Hello world"})}
                  :nested {:url "http://database:32020/override"}}]
     (testing "Use a struct builder as a nested ctor"
-      (let [created (sys/build struct options)
-            started (component/start created)]
-        (try
-          (is (=  (-> started ::database :url) "http://database:32020/override"))
-          (finally (component/stop started)))))))
+      (try
+        (let [created (sys/build struct options)
+              started (component/start created)]
+          (try
+            (is (= "http://database:32020/override" (-> started ::database :url)))
+            (finally (component/stop started))))
+        (catch clojure.lang.ExceptionInfo ex
+          (let [data (.getData ex)]
+            (is false (str "nested-builder initialization failed\n"
+                           (.getMessage ex) "\n"
+                           (with-out-str (pprint data))
+                           (if-let [^Exception cause (:cause data)]
+                             (str "Nested root cause: " (.getMessage cause))
+                             "Cause not specified")))))))))
 (comment (nested-builder)
          )
 

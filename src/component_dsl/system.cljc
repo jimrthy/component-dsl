@@ -230,12 +230,22 @@ are found are available, so we can access the specs"
                          :name name
                          :ctor-sym ctor-sym
                          :ns-sym ns-sym})))
-      (#?(:clj require) #?(:cljs (throw (ex-info "That exists. Use it" {}))) ns-sym))
+      (try
+        (#?(:clj require) #?(:cljs (throw (ex-info "That exists. Use it" {}))) ns-sym)
+        (catch java.io.FileNotFoundException ex
+          (throw (ex-info (str "Unable to require a constructor")
+                          {:ctor-ns ctor-ns
+                           :ctor-sym ctor-sym
+                           :component-name name
+                           :config-options config-options
+                           :cause ex
+                           :ns-sym ns-sym})))))
     (catch ClassCastException ex
       (throw (ex-info "Failed to require the associated namespace symbol"
                       {:ctor-sym ctor-sym
                        :component-name name
-                       :config-options config-options}))))
+                       :config-options config-options})))
+    )
   (if-let [ctor (#?(:clj resolve)
                  #?(:cljs
                     (throw (ex-info "This can't possibly work as-is...what's the equivalent?" {})))
@@ -604,30 +614,32 @@ Distinguish one from the other here."
                                                         (partition 2)
                                                         (filter #(= :ret (first %))))]
                                   (when (seq? ret-spec-seq)
-                                    (comment) (println (str "Extracting the ret-spec from the ret-spec-seq:"
-                                                            "\nfor " k " => " ctor
-                                                            "\ninside\n"
-                                                            (with-out-str (pprint struct))))
                                     (let [ret-spec (-> ret-spec-seq
                                                        first ;; We'll only get one result...right?
                                                        second)]
-                                      (println "Return spec: " ret-spec)
-                                      (when (seq? ret-spec)
-                                        (let [req-ret-spec-seq (->> ret-spec
-                                                                    (drop 1)
-                                                                    (partition 2)
-                                                                    (filter #(= :req (first %))))]
-                                          (println "Required seq of the return spec map: " req-ret-spec-seq)
-                                          (when (seq? req-ret-spec-seq)
-                                            (let [req-ret-spec (-> req-ret-spec-seq first second)]
-                                              (println "Required keys of the return spec map: " req-ret-spec)
-                                              (when (and (contains? req-ret-spec ::description)
-                                                         (contains? req-ret-spec ::primary-component))
-                                                ;; If the "ctor" returns a ::description, it's actually a function that
-                                                ;; defines nested components.
-                                                ;; This is the interesting case
-                                                (println "Found a nested definer:" k "=>" ctor)
-                                                ::definers))))))))
+                                      (cond (seq? ret-spec) (let [req-ret-spec-seq (->> ret-spec
+                                                                                        (drop 1)
+                                                                                        (partition 2)
+                                                                                        (filter #(= :req (first %))))]
+                                                              ;; This approach was my first attempt. And it probably makes some
+                                                              ;; sense to try to be thorough.
+                                                              ;; But it really doesn't go far enough. Need to recursively extract
+                                                              ;; the spec until I get down to a root that I can't extract any further.
+                                                              ;; Or maybe just until it expands to something that matches the
+                                                              ;; expansion of ::nested-definition.
+                                                              ;; Should probably mark this off as a dead-end and not even bother
+                                                              ;; trying until/unless someone actually wants it.
+                                                              (when (seq? req-ret-spec-seq)
+                                                                (let [req-ret-spec (-> req-ret-spec-seq first second)]
+                                                                  (when (and (contains? req-ret-spec ::description)
+                                                                             (contains? req-ret-spec ::primary-component))
+                                                                    ;; If the "ctor" returns a ::description, it's actually a function that
+                                                                    ;; defines nested components.
+                                                                    ;; This is the interesting case
+                                                                    (comment (println "Found a nested definer:" k "=>" ctor))
+                                                                    ::definers))))
+                                            (keyword? ret-spec) (when (= ret-spec ::nested-definition)
+                                                                  ::definers)))))
                                 (catch Exception ex
                                   (throw (ex-info "Inner failure manipulating spec"
                                                   {:failure ex
@@ -639,10 +651,11 @@ Distinguish one from the other here."
                               ;; except the spec-location error
                               (throw ex))
                             (catch Exception ex
-                              ;; No associated spec. Assume this is a standard ctor
-                              (println (str "Non-failure: " ex " => "(.getMessage ex)
-                                            "\nAssume this means we couldn't extract the spec, so it's a regular ctor"
-                                            "\nProblem: " k " => " ctor))))
+                              ;; No associated spec. Assume this is a standard ctor.
+                              ;; Nothing to see here. Move along.
+                              (comment (println (str "Non-failure: " ex " => "(.getMessage ex)
+                                                     "\nAssume this means we couldn't extract the spec, so it's a regular ctor"
+                                                     "\nProblem: " k " => " ctor)))))
                           ::tops)]
               (update acc dst assoc k ctor)))
           {::tops {}
@@ -661,20 +674,30 @@ Distinguish one from the other here."
                        (filter (comp symbol? second))
                        (into {}))
         {:keys [::tops ::definers]} (split-nested-definers true-tops)
-        _ (when-not (empty? definers)
-          (throw (ex-info (str "Need to use\n"
-                               definers
-                               "\nand their associated options from\n"
-                               (with-out-str (pprint options))
-                               "to build the baseline nested dependencies")
-                          {:problem :not-implemented
-                           :definers definers
-                           :options options})))
+        defined (reduce (fn [acc [k ctor-sym]]
+                          (let [ctor (resolve ctor-sym)]
+                            (comment (println (str "Calling nested definition builder\n"
+                                                   ctor "\nfor Component " k)))
+                            ;; I was tempted to supply the override options to this
+                            ;; "constructor." However:
+                            ;; as a nested Component library author, I just want
+                            ;; to specify my defaults and move on.
+                            ;; This needs to cope with overriding them.
+                            (let [nested-definition (ctor)]
+                              (comment (println "Nested definition that was just created:\n"
+                                                (with-out-str (pprint nested-definition))))
+                              ;; TODO: Honestly, this needs to recurse and cope with
+                              ;; nested definition builders that might have just been returned
+                              (assoc acc k nested-definition))))
+                        {}
+                        definers)
         nested (->> structure
                     (filter (comp (complement symbol?) second))
-                    (into definers))]
+                    (into defined))]
     (println "\ncomponent-dsl.system/pre-process\n"
              (with-out-str (pprint nested))
+             "starting from\n"
+             (with-out-str (pprint defined))
              "into\n" (with-out-str (pprint tops))
              "\nbased on\n" (with-out-str (pprint params)))
     (let [de-nested (reduce de-nest-component-ctors
