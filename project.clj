@@ -39,7 +39,7 @@
                  ;; Or I could try to support both versions, which seems
                  ;; like a disaster waiting to happen.
                  [org.clojure/clojure "1.9.0-alpha11"]
-                 [org.clojure/clojurescript "1.9.227"]
+                 [org.clojure/clojurescript "1.9.229"]
                  [org.clojure/test.check "0.9.0"]
                  ;; Including this here is very debatable.
                  ;; Why would you ever use this without namespace?
