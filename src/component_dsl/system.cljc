@@ -607,45 +607,46 @@ Distinguish one from the other here."
                [k ctor]]
             (let [dst (or (try
                             (let [spec (s/form ctor)]
-                              (try
-                                ;; Which fields are required to be in the return value?
-                                (let [ret-spec-seq (->> spec
-                                                        (drop 1)
-                                                        (partition 2)
-                                                        (filter #(= :ret (first %))))]
-                                  (when (seq? ret-spec-seq)
-                                    (let [ret-spec (-> ret-spec-seq
-                                                       first ;; We'll only get one result...right?
-                                                       second)]
-                                      (cond (seq? ret-spec) (let [req-ret-spec-seq (->> ret-spec
-                                                                                        (drop 1)
-                                                                                        (partition 2)
-                                                                                        (filter #(= :req (first %))))]
-                                                              ;; This approach was my first attempt. And it probably makes some
-                                                              ;; sense to try to be thorough.
-                                                              ;; But it really doesn't go far enough. Need to recursively extract
-                                                              ;; the spec until I get down to a root that I can't extract any further.
-                                                              ;; Or maybe just until it expands to something that matches the
-                                                              ;; expansion of ::nested-definition.
-                                                              ;; Should probably mark this off as a dead-end and not even bother
-                                                              ;; trying until/unless someone actually wants it.
-                                                              (when (seq? req-ret-spec-seq)
-                                                                (let [req-ret-spec (-> req-ret-spec-seq first second)]
-                                                                  (when (and (contains? req-ret-spec ::description)
-                                                                             (contains? req-ret-spec ::primary-component))
-                                                                    ;; If the "ctor" returns a ::description, it's actually a function that
-                                                                    ;; defines nested components.
-                                                                    ;; This is the interesting case
-                                                                    (comment (println "Found a nested definer:" k "=>" ctor))
-                                                                    ::definers))))
-                                            (keyword? ret-spec) (when (= ret-spec ::nested-definition)
-                                                                  ::definers)))))
-                                (catch Exception ex
-                                  (throw (ex-info "Inner failure manipulating spec"
-                                                  {:failure ex
-                                                   :problem-key k
-                                                   :problem-ctor ctor
-                                                   :stack-trace (.getStackTrace ex)})))))
+                              (when-not (= spec :clojure.spec/unknown)
+                                (try
+                                  ;; Which fields are required to be in the return value?
+                                  (let [ret-spec-seq (->> spec
+                                                          (drop 1)
+                                                          (partition 2)
+                                                          (filter #(= :ret (first %))))]
+                                    (when (seq? ret-spec-seq)
+                                      (let [ret-spec (-> ret-spec-seq
+                                                         first ;; We'll only get one result...right?
+                                                         second)]
+                                        (cond (seq? ret-spec) (let [req-ret-spec-seq (->> ret-spec
+                                                                                          (drop 1)
+                                                                                          (partition 2)
+                                                                                          (filter #(= :req (first %))))]
+                                                                ;; This approach was my first attempt. And it probably makes some
+                                                                ;; sense to try to be thorough.
+                                                                ;; But it really doesn't go far enough. Need to recursively extract
+                                                                ;; the spec until I get down to a root that I can't extract any further.
+                                                                ;; Or maybe just until it expands to something that matches the
+                                                                ;; expansion of ::nested-definition.
+                                                                ;; Should probably mark this off as a dead-end and not even bother
+                                                                ;; trying until/unless someone actually wants it.
+                                                                (when (seq? req-ret-spec-seq)
+                                                                  (let [req-ret-spec (-> req-ret-spec-seq first second)]
+                                                                    (when (and (contains? req-ret-spec ::description)
+                                                                               (contains? req-ret-spec ::primary-component))
+                                                                      ;; If the "ctor" returns a ::description, it's actually a function that
+                                                                      ;; defines nested components.
+                                                                      ;; This is the interesting case
+                                                                      (comment (println "Found a nested definer:" k "=>" ctor))
+                                                                      ::definers))))
+                                              (keyword? ret-spec) (when (= ret-spec ::nested-definition)
+                                                                    ::definers)))))
+                                  (catch Exception ex
+                                    (throw (ex-info "Inner failure manipulating spec"
+                                                    {:failure ex
+                                                     :problem-key k
+                                                     :problem-ctor ctor
+                                                     :stack-trace (.getStackTrace ex)}))))))
                             (catch ExceptionInfo ex
                               ;; Really just a wrapper to keep the outer Exception handler from catching anything
                               ;; except the spec-location error
