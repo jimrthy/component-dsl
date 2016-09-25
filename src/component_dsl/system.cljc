@@ -11,8 +11,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Specs
 
-(s/def ::component-name simple-keyword?)
-
+(s/def ::option-name keyword?)
+(s/def ::option-value any?)
 ;; The options to supply to each component when it's constructed
 ;; For flexibility, everything should be legal here.
 ;; But, come on, when would the keys ever be anything except
@@ -20,12 +20,16 @@
 ;; Note that the keys are not ::component-name!
 ;; That's a higher-level abstraction captured below in
 ;; ::configuration-tree
-(s/def ::option-map (s/map-of keyword? any?))
+(s/def ::option-map (s/map-of ::option-name ::option-value))
 
 ;;; Which parameters get passed to the various constructors?
 ;;;
 ;;; The keys are the corresponding names of each Component.
-;;;
+;;; This seems like it should be simple-keyword? but I really
+;;; have to fully-qualify these (and then some) for nested
+;;; definitions.
+(s/def ::component-name keyword?)
+
 ;;; This seems like a silly approach...why not just describe
 ;;; each Component, include its constructor and associated args,
 ;;; and its dependencies altogether?
@@ -313,7 +317,6 @@ are found are available, so we can access the specs"
       (create-individual-component config-options definition)
       (create-nested-components config-options ctor-descr))))
 
-;;; Q: What's the spec equivalent of schema's ^:always-validate?
 (s/fdef initialize
         :args (s/cat :descr ::initialization-map
                      :config-options ::configuration-tree)
@@ -322,10 +325,28 @@ are found are available, so we can access the specs"
   "require the individual namespaces and call each Component's constructor.
 Returns a seq of name/instance pairs that probably should have been a map."
   [descr config-options]
+  ;; This feels like a heavy-handed way to implement ^:always-validate,
+  ;; if only because it violates DRY.
+  ;; Oh well. It's a start.
+  ;; Q: Is this worth checking that each entry in the initialization map has
+  ;; exactly one matching entry in the configuration-tree?
+  ;; A: No. Not all Components need constructor overrides.
+  #_{:pre [(and (s/valid? ::initialization-map descr)
+              (s/valid? ::configuration-tree config-options))]
+   :post (s/valid? (s/coll-of ::component) %)}
   (println (str "component-dsl.system/initialize\n\tStructure:\n"
                 (with-out-str (pprint descr))
                 "\tOptions:\n"
                 (with-out-str (pprint config-options))))
+  (when-not (s/valid? ::initialization-map descr)
+    (let [msg (str "Invalid initialization-map:\n"
+                   (s/explain ::initialization-map descr))]
+      (throw (ex-info msg {:problem descr}))))
+  (when-not (s/valid? ::configuration-tree config-options)
+    (throw (ex-info (str "Invalid config-options:\n"
+                         (s/explain ::configuration-tree config-options))
+                    {:problem config-options
+                     :structure descr})))
   (let [result
         (mapcat (partial create-component config-options)
              descr)]
@@ -501,23 +522,41 @@ and should return
   (into root de-nesting))
 
 (s/fdef merge-individual-option
+        :args (s/cat :acc ::option-map
+                     :options (s/cat :option-name ::option-name
+                                     :options ::option-map)))
+(defn merge-individual-option [acc [k v]]
+  (assoc acc k
+         (if-not (map? v)
+           (if (contains? acc k)
+             (get acc k)
+             v)
+           ;; This gets interesting when trees are involved.
+           ;; I need to be able to specify defaults, then override
+           ;; individual pieces.
+           ;; e.g.
+           #_{:default {:web {:url {:host "frob.boo.com"
+                                    :protocol :http
+                                    :path "/foo/bar/bazz"
+                                    :port 80}}}
+              :override {:web {:url {:port 8080
+                                     :protocol :https}}}}
+           (let [override (get acc k {})]
+             (println "Merging" v "into" override)
+             (reduce merge-individual-option override v)))))
+
+(s/fdef merge-individual-component-options
         :args (s/cat :acc ::configuration-tree
                      :options (s/cat :component-name ::component-name
                                      :options ::option-map)))
-(defn merge-individual-option
-  "This almost definitely needs to be handled with a zipper"
+(defn merge-individual-component-options
+  "Note that this is backwards from what you'd generally expect:
+  The acc is the more-specific overrides. We ignore the incoming [k v] pairs
+  as less-specific, unless there is no override already.
+  Q: Would this be cleaner with a zipper?"
   [acc [component-name options]]
   (update acc component-name
-          #(reduce (fn [acc [k v]]
-                     (assoc acc k
-                            (if-not (map? v)
-                              (if (contains? acc k)
-                                (get acc k)
-                                v)
-                              (throw (ex-info "Trees will make this interesting"
-                                              {:into acc
-                                               :for component-name
-                                               :merging options})))))
+          #(reduce merge-individual-option
                    (or % {})
                    options)))
 
@@ -531,7 +570,7 @@ and should return
         {:keys [::system-configuration ::configuration-tree]
          :as options}]]
   ;; Q: Does this need to recurse?
-  (reduce merge-individual-option acc configuration-tree))
+  (reduce merge-individual-component-options acc configuration-tree))
 
 (s/fdef de-nest-component-ctors
         :args (s/cat :acc (s/tuple ::initialization-map ::system-dependencies)
@@ -690,7 +729,10 @@ Distinguish one from the other here."
                             ;; as a nested Component library author, I just want
                             ;; to specify my defaults and move on.
                             ;; This needs to cope with overriding them.
-                            (let [nested-definition (ctor)]
+                            ;; Except that's exactly inside-out.
+                            ;; This is precisely where it's most convenient to handle the override
+                            (let [opts (k options)
+                                  nested-definition (ctor opts)]
                               (comment (println "Nested definition that was just created:\n"
                                                 (with-out-str (pprint nested-definition))))
                               ;; TODO: Honestly, this needs to recurse and cope with
