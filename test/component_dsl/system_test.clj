@@ -58,15 +58,19 @@ TODO: Rename all these tests to .cljc"
                                     :body "Hello world"})}}}))
 
 (s/fdef nested-struct-builder
-        :args ()
+        :args (s/cat :opts (s/keys :opt [::schema-definition ::url]))
         :ret :component-dsl.system/nested-definition)
 (defn nested-struct-builder
-  []
+  [{:keys [::schema-definition
+           ::url]
+    :or {schema-definition "http://database/schema.html"
+         url "http://database:2020/connection"}
+    :as opts}]
   (let [nested-struct '{::database component-dsl.example-db/ctor
                         ::schema component-dsl.example-db/schema-builder}
         nested-deps {::schema {:db ::database}}
-        nested-opts {::database {:url "http://database:2020/connection"}
-                     ::schema {:definition "http://database/schema.html"}}]
+        nested-opts {::database {:url url}
+                     ::schema {:definition schema-definition}}]
     #:component-dsl.system{:system-configuration #:component-dsl.system{:structure nested-struct
                                                                         :dependencies nested-deps}
                            :configuration-tree nested-opts
@@ -74,16 +78,16 @@ TODO: Rename all these tests to .cljc"
 
 (defn hard-coded-nested-structure
   []
-  (let [nested (nested-struct-builder)
+  (let [nested (nested-struct-builder {})
         description `#:component-dsl.system{:structure {:web component-dsl.core/ctor,
                                                         :routes component-dsl.routes/ctor,
                                                         :nested ~nested},
                                             :dependencies {:web [:routes],
                                                            :routes [:nested]}}
-        options {:web {:port 2600, :resource-route "/home/www/public/"},
-                 :routes {:handler (fn [_]
+        options {:routes {:handler (fn [_]
                                      {:code 200
-                                      :body "Hello world"})}}]
+                                      :body "Hello world"})}
+                 :web {:port 2600, :resource-route "/home/www/public/"},}]
     ;; Note that these are really just used internally.
     ;; They get passed to build and pre-process as 2 separate arguments.
     ;; Though that's starting to seem a little silly
@@ -254,7 +258,7 @@ Starting manual nesting test
                  :routes {:handler (fn [_]
                                      {:code 200
                                       :body "Hello world"})}
-                 :nested {:url "http://database:32020/override"}}]
+                 :nested {::url "http://database:32020/override"}}]
     (testing "Use a struct builder as a nested ctor"
       (try
         (let [created (sys/build struct options)
