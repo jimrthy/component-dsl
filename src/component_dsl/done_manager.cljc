@@ -4,5 +4,5 @@ while everything else interesting happens.
 
   I've found this useful for that, though it obviously isn't limited to this use case")
 
-(defn ctor [options]
+(defn ctor [_]
   {:done (promise)})

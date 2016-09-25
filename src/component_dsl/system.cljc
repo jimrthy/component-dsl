@@ -418,7 +418,14 @@ as an arg. It really should be available somewhere
 in the dependency-template.
 
 That may be (but probably isn't) the case. If it is,
-that's an accident of the implementation."
+that's an accident of the implementation.
+
+N.B. this approach breaks if there are two instances of a nested Component.
+We really have to map the non-default nested Components to something unique
+as well.
+
+The obvious approach seems to e adding the \"real\" Component key to the
+one supplied by the caller, since that one's unique."
   [dependency-template to-replace replacement]
   (->> dependency-template
        (map (fn [[k v]]
