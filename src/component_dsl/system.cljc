@@ -600,12 +600,18 @@ Takes nested components with their dependencies and recursively promotes them to
         ;; pieces into pre-process separately. But then the top-level
         ;; caller needs to know that detail about its implementation.
         ;; TODO: Add an arity to it that handles this.
-        pre-processed (pre-process (assoc sys-cfg ::options
-                                          configuration-tree))
-        nested-description (::description pre-processed)
+        ;; That seems to be something that I need now.
+        ;; Q: What did I actually have in mind?
+        ;; Tentative A: Pretty sure it deals with splitting out tops/definers
+        pre-processed (pre-process (assoc sys-cfg
+                                          ::options configuration-tree))
         {nested-struct ::structure
          nested-deps ::dependencies
          :as de-nested} pre-processed
+        _ (comment (throw (ex-info (str "Just checking my destructuring syntax"
+                                        (with-out-str (pprint {:nested-struct nested-struct
+                                                               :nested-deps nested-deps})))
+                                   {})))
         tops-to-merge (dissoc pre-processed ::structure ::dependencies ::options)
         duplicates (filter (comp (partial contains? structure)
                                  key)
@@ -615,9 +621,9 @@ Takes nested components with their dependencies and recursively promotes them to
                            "Try namespacing the nested ones")
                       {:duplicates duplicates
                        :structure structure})))
-    (let [result-struct (as-> structure x
-                          (merge-nested-struct x tops-to-merge)
-                          (merge-nested-struct x nested-struct))]
+    (let [result-struct (-> structure
+                          (merge-nested-struct tops-to-merge)
+                          (merge-nested-struct nested-struct))]
       (println (str "\ncomponent-dsl.system/de-nest-component-ctors"
                     " extracted the nested structure\n"
                     (with-out-str (pprint nested-struct))
@@ -734,16 +740,22 @@ Distinguish one from the other here."
           definers))
 
 (s/fdef pre-process
-        :args (s/cat :description ::system-description
-                     :options ::configuration-tree)
+        ;; Q: How do we spec this sort of multi-arity?
+        :args (s/cat :description (s/merge ::system-description
+                                           ::configuration-tree))
         :ret ::flattened-description)
 (defn pre-process
   "Have to flatten out nested system definitions"
   [{:keys [::structure ::dependencies ::options]
-    :as params}]
+      :as params}]
   (let [true-tops (->> structure
                        (filter (comp symbol? second))
                        (into {}))
+        ;; These should probably have been named better.
+        ;; What I'm calling tops here are really the
+        ;; constructors which generate Components directly.
+        ;; Wherease definers generate nested component definitions
+        ;; that need to be called again.
         {:keys [::tops ::definers]} (split-nested-definers true-tops)
         defined (call-nested-ctors options definers)
         manually-nested (->> structure
@@ -772,28 +784,6 @@ Distinguish one from the other here."
                                options
                                nested)))))
 
-(s/fdef flatten-options
-        :args (s/cat :top-level ::configuration-tree
-                     :component-tree ::initialization-map)
-        :ret ::configuration-tree)
-(defn flatten-options
-  "Pull ctor options from the tree of nested components and override them with higher-level ctor options
-
-For performance reasons, it's very tempting to do this in parallel with merging the tree
-of structure/dependencies so I don't have to traverse the tree twice.
-
-If your component tree is so big that you have to worry about the performance implications of
-traversing it twice...that's the sort of problem that I think I'd like to be solving here.
-
-TODO: Worry about that when the baseline works."
-  [top-level component-tree]
-  (throw (ex-info "Obsolete" {:why "Wound up being easier to do all at once after all"}))
-  (println "Overriding the options from\n"
-           (with-out-str (pprint component-tree))
-           "\nwith\n"
-           (with-out-str (pprint top-level)))
-  (throw (ex-info "Start here" {:todo "Write this"})))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
 
@@ -807,7 +797,6 @@ TODO: Worry about that when the baseline works."
   [descr options]
   (println "Building a system from keys" (keys descr))
   (let [pre-processed (pre-process (assoc descr ::options options))
-        ;;flattened-options (flatten-options options descr)
         pre-init (system-map (::structure pre-processed) (::options pre-processed options))]
     (dependencies pre-init (::dependencies pre-processed))))
 
