@@ -709,6 +709,30 @@ Distinguish one from the other here."
            ::definers {}}
           struct))
 
+(defn call-nested-ctors
+  "Have definitions for creating nested components. Do the constructing"
+  [options definers]
+  (reduce (fn [acc [k ctor-sym]]
+            (let [ctor (resolve ctor-sym)]
+              (comment (println (str "Calling nested definition builder\n"
+                                     ctor "\nfor Component " k)))
+              ;; I was tempted to supply the override options to this
+              ;; "constructor." However:
+              ;; as a nested Component library author, I just want
+              ;; to specify my defaults and move on.
+              ;; This needs to cope with overriding them.
+              ;; Except that's exactly inside-out.
+              ;; This is precisely where it's most convenient to handle the override
+              (let [opts (k options)
+                    nested-definition (ctor opts)]
+                (comment (println "Nested definition that was just created:\n"
+                                  (with-out-str (pprint nested-definition))))
+                ;; TODO: Honestly, this needs to recurse and cope with
+                ;; nested definition builders that might have just been returned
+                (assoc acc k nested-definition))))
+          {}
+          definers))
+
 (s/fdef pre-process
         :args (s/cat :description ::system-description
                      :options ::configuration-tree)
@@ -721,35 +745,22 @@ Distinguish one from the other here."
                        (filter (comp symbol? second))
                        (into {}))
         {:keys [::tops ::definers]} (split-nested-definers true-tops)
-        defined (reduce (fn [acc [k ctor-sym]]
-                          (let [ctor (resolve ctor-sym)]
-                            (comment (println (str "Calling nested definition builder\n"
-                                                   ctor "\nfor Component " k)))
-                            ;; I was tempted to supply the override options to this
-                            ;; "constructor." However:
-                            ;; as a nested Component library author, I just want
-                            ;; to specify my defaults and move on.
-                            ;; This needs to cope with overriding them.
-                            ;; Except that's exactly inside-out.
-                            ;; This is precisely where it's most convenient to handle the override
-                            (let [opts (k options)
-                                  nested-definition (ctor opts)]
-                              (comment (println "Nested definition that was just created:\n"
-                                                (with-out-str (pprint nested-definition))))
-                              ;; TODO: Honestly, this needs to recurse and cope with
-                              ;; nested definition builders that might have just been returned
-                              (assoc acc k nested-definition))))
-                        {}
-                        definers)
-        nested (->> structure
-                    (filter (comp (complement symbol?) second))
-                    (into defined))]
+        defined (call-nested-ctors options definers)
+        manually-nested (->> structure
+                             (filter (comp (complement symbol?) second)))
+        nested (into defined manually-nested)]
     (println "\ncomponent-dsl.system/pre-process\n"
-             (with-out-str (pprint nested))
-             "starting from\n"
+             "\n\tManually declared components:\n"
+             (with-out-str (pprint manually-nested))
+             "\n\tNested component constructors:\n"
+             (with-out-str (pprint definers))
+             "\n\tNested constructed components:\n"
              (with-out-str (pprint defined))
-             "into\n" (with-out-str (pprint tops))
-             "\nbased on\n" (with-out-str (pprint params)))
+             "\n\tCombined nested components:\n"
+             (with-out-str (pprint nested))
+             "merging into top-level definitions\n" (with-out-str (pprint tops))
+             "\nbased on\n" (with-out-str (pprint params))
+             "\nDe-nesting the constructor definitions")
     (let [de-nested (reduce de-nest-component-ctors
                             {::structure tops
                              ::dependencies dependencies}
