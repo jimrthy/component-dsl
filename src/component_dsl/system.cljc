@@ -608,10 +608,6 @@ Takes nested components with their dependencies and recursively promotes them to
         {nested-struct ::structure
          nested-deps ::dependencies
          :as de-nested} pre-processed
-        _ (comment (throw (ex-info (str "Just checking my destructuring syntax"
-                                        (with-out-str (pprint {:nested-struct nested-struct
-                                                               :nested-deps nested-deps})))
-                                   {})))
         tops-to-merge (dissoc pre-processed ::structure ::dependencies ::options)
         duplicates (filter (comp (partial contains? structure)
                                  key)
@@ -641,6 +637,65 @@ Takes nested components with their dependencies and recursively promotes them to
                           (resolve-nested-dependencies name primary-component)
                           (merge-dependency-trees nested-deps))})))
 
+(s/fdef classify-top-level-constructor
+        :args (s/cat :ctor (s/fspec :args (s/cat :options ::option-map)
+                                    :ret (s/or :instance ::component-instance
+                                               :nested ::nested-definition)))
+        :ret #{nil ::definers})
+(defn classify-top-level-constructor
+  [ctor]
+  (try
+    (let [spec (s/form ctor)]
+      (when-not (= spec :clojure.spec/unknown)
+        (try
+          ;; Which fields are required to be in the return value?
+          (let [ret-spec-seq (->> spec
+                                  (drop 1)
+                                  (partition 2)
+                                  (filter #(= :ret (first %))))]
+            (when (seq? ret-spec-seq)
+              (let [ret-spec (-> ret-spec-seq
+                                 first ;; We'll only get one result...right?
+                                 second)]
+                (cond (seq? ret-spec) (let [req-ret-spec-seq (->> ret-spec
+                                                                  (drop 1)
+                                                                  (partition 2)
+                                                                  (filter #(= :req (first %))))]
+                                        ;; This approach was my first attempt. And it probably makes some
+                                        ;; sense to try to be thorough.
+                                        ;; But it really doesn't go far enough. Need to recursively extract
+                                        ;; the spec until I get down to a root that I can't extract any further.
+                                        ;; Or maybe just until it expands to something that matches the
+                                        ;; expansion of ::nested-definition.
+                                        ;; Should probably mark this off as a dead-end and not even bother
+                                        ;; trying until/unless someone actually wants it.
+                                        (when (seq? req-ret-spec-seq)
+                                          (let [req-ret-spec (-> req-ret-spec-seq first second)]
+                                            (when (and (contains? req-ret-spec ::description)
+                                                       (contains? req-ret-spec ::primary-component))
+                                              ;; If the "ctor" returns a ::description, it's actually a function that
+                                              ;; defines nested components.
+                                              ;; This is the interesting case
+                                              (comment (println "Found a nested definer:" k "=>" ctor))
+                                              ::definers))))
+                      (keyword? ret-spec) (when (= ret-spec ::nested-definition)
+                                            ::definers)))))
+          (catch Exception ex
+            (throw (ex-info "Inner failure manipulating spec"
+                            {:failure ex
+                             :problem-ctor ctor
+                             :stack-trace (.getStackTrace ex)}))))))
+    (catch ExceptionInfo ex
+      ;; Really just a wrapper to keep the outer Exception handler from catching anything
+      ;; except the spec-location error
+      (throw ex))
+    (catch Exception ex
+      ;; No associated spec. Assume this is a standard ctor.
+      ;; Nothing to see here. Move along.
+      (comment (println (str "Non-failure: " ex " => "(.getMessage ex)
+                             "\nAssume this means we couldn't extract the spec, so it's a regular ctor"
+                             "\nProblem: " k " => " ctor))))))
+
 (s/fdef split-nested-definers
         :args (s/cat :struct ::structure)
         :ret (s/keys :req [::tops ::definers])
@@ -652,68 +707,24 @@ Takes nested components with their dependencies and recursively promotes them to
   "Top-level function definitions might be Component constructors. Or they might return nested definitions.
 
 Distinguish one from the other here."
-  [struct]
+  [struc]
   (println "Splitting nested definers from:\n"
-           (with-out-str (pprint struct)))
+           (with-out-str (pprint struc)))
   (reduce (fn [{:keys [::tops ::definers] :as acc}
                [k ctor]]
-            (let [dst (or (try
-                            (let [spec (s/form ctor)]
-                              (when-not (= spec :clojure.spec/unknown)
-                                (try
-                                  ;; Which fields are required to be in the return value?
-                                  (let [ret-spec-seq (->> spec
-                                                          (drop 1)
-                                                          (partition 2)
-                                                          (filter #(= :ret (first %))))]
-                                    (when (seq? ret-spec-seq)
-                                      (let [ret-spec (-> ret-spec-seq
-                                                         first ;; We'll only get one result...right?
-                                                         second)]
-                                        (cond (seq? ret-spec) (let [req-ret-spec-seq (->> ret-spec
-                                                                                          (drop 1)
-                                                                                          (partition 2)
-                                                                                          (filter #(= :req (first %))))]
-                                                                ;; This approach was my first attempt. And it probably makes some
-                                                                ;; sense to try to be thorough.
-                                                                ;; But it really doesn't go far enough. Need to recursively extract
-                                                                ;; the spec until I get down to a root that I can't extract any further.
-                                                                ;; Or maybe just until it expands to something that matches the
-                                                                ;; expansion of ::nested-definition.
-                                                                ;; Should probably mark this off as a dead-end and not even bother
-                                                                ;; trying until/unless someone actually wants it.
-                                                                (when (seq? req-ret-spec-seq)
-                                                                  (let [req-ret-spec (-> req-ret-spec-seq first second)]
-                                                                    (when (and (contains? req-ret-spec ::description)
-                                                                               (contains? req-ret-spec ::primary-component))
-                                                                      ;; If the "ctor" returns a ::description, it's actually a function that
-                                                                      ;; defines nested components.
-                                                                      ;; This is the interesting case
-                                                                      (comment (println "Found a nested definer:" k "=>" ctor))
-                                                                      ::definers))))
-                                              (keyword? ret-spec) (when (= ret-spec ::nested-definition)
-                                                                    ::definers)))))
-                                  (catch Exception ex
-                                    (throw (ex-info "Inner failure manipulating spec"
-                                                    {:failure ex
-                                                     :problem-key k
-                                                     :problem-ctor ctor
-                                                     :stack-trace (.getStackTrace ex)}))))))
-                            (catch ExceptionInfo ex
-                              ;; Really just a wrapper to keep the outer Exception handler from catching anything
-                              ;; except the spec-location error
-                              (throw ex))
-                            (catch Exception ex
-                              ;; No associated spec. Assume this is a standard ctor.
-                              ;; Nothing to see here. Move along.
-                              (comment (println (str "Non-failure: " ex " => "(.getMessage ex)
-                                                     "\nAssume this means we couldn't extract the spec, so it's a regular ctor"
-                                                     "\nProblem: " k " => " ctor)))))
+            (when (= k :event-loop)
+              (println "===================================================\n"
+                       "Pay attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+                       "Debug only!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+                       "Classifying" (with-out-str (pprint ctor)) "at the top level"))
+            (let [dst (or (classify-top-level-constructor ctor)
                           ::tops)]
+              (when (= k :event-loop)
+                (println (str k " constructed by " ctor " was classified as " dst)))
               (update acc dst assoc k ctor)))
           {::tops {}
            ::definers {}}
-          struct))
+          struc))
 
 (defn call-nested-ctors
   "Have definitions for creating nested components. Do the constructing"
@@ -796,9 +807,11 @@ Distinguish one from the other here."
   "Returns a System that's ready to start"
   [descr options]
   (println "Building a system from keys" (keys descr))
-  (let [pre-processed (pre-process (assoc descr ::options options))
-        pre-init (system-map (::structure pre-processed) (::options pre-processed options))]
-    (dependencies pre-init (::dependencies pre-processed))))
+  (let [pre-processed (pre-process (assoc descr ::options options))]
+    (println "component-dsl.system/build: after pre-processing:\n"
+             (with-out-str (pprint pre-processed)))
+    (let [pre-init (system-map (::structure pre-processed) (::options pre-processed))]
+      (dependencies pre-init (::dependencies pre-processed)))))
 
 (s/fdef ctor
         :args (s/cat :config-file-name string?
