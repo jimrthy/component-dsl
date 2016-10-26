@@ -41,10 +41,7 @@
 
 (s/def ::nested-definition (s/keys :req [::system-configuration
                                          ::configuration-tree
-                                         ::primary-component]
-                                   #_{::system-configuration ::initialization-map
-                                      ::configuration-tree ::configuration-tree
-                                      ::primary-component ::component-name}))
+                                         ::primary-component]))
 
 ;; When a Component's dependency name doesn't match what the System calls it
 ;; Key is what your Component calls it, value is what the System does
@@ -196,16 +193,31 @@ are found are available, so we can access the specs"
                                 "\nHonestly, this is fatal")]
                    (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) msg ex)))))]
     (when (s/valid? ::nested-definition instance)
-      (do
-        (println "Recursing because\n"
-                 (with-out-str (pprint instance))
-                 "\ncreated by calling" ctor
-                 "\non" (with-out-str (pprint local-options))
-                 "\nfor the Component named" name
-                 "\nis a valid ::nested-definition"
-                 "\nConformed version looks like:\n"
-                 (with-out-str (pprint (s/conform ::nested-definition instance))))
-        (throw (ex-info "Should have already handled recursion" {}))))
+      ;; I'm getting inconclusive errors from this.
+      ;; Maybe because I didn't have the latest version installed?
+      ;; I need to trace the actual steps out more explicitly.
+      ;; Or maybe it just really does need to work like macro expansion
+      ;; because that's effectively what I'm doing.
+      ;; I ran the frereth server (start) through 3 times in a row.
+      ;; First it failed because s/explain-data is edging over into
+      ;; the sample data generator.
+      ;; And then it failed because it couldn't rebind a socket.
+      ;; When I restarted my JVM, this failed.
+      ;; When I commented out the exception this was throwing, and enable
+      ;; the pre-validation on frereth.common.async-zmq/run-async-loop!,
+      ;; it fails there (as opposed to failing when it tries to explain
+      ;; the data associated with that failure).
+      ;; That's bound the socket in a way I don't have a good way to reset,
+      ;; so it really means another JVM restart.
+      (println "It looks like this should recurse because\n"
+               (with-out-str (pprint instance))
+               "\ncreated by calling" ctor
+               "\non" (with-out-str (pprint local-options))
+               "\nfor the Component named" name
+               "\nis a valid ::nested-definition"
+               "\nConformed version looks like:\n"
+               (with-out-str (pprint (s/conform ::nested-definition instance))))
+      (comment (throw (ex-info "Should have already handled recursion" {}))))
     [[name instance]]))
 
 (s/fdef create-individual-component
@@ -248,8 +260,7 @@ are found are available, so we can access the specs"
       (throw (ex-info "Failed to require the associated namespace symbol"
                       {:ctor-sym ctor-sym
                        :component-name name
-                       :config-options config-options})))
-    )
+                       :config-options config-options}))))
   (if-let [ctor (#?(:clj resolve)
                  #?(:cljs
                     (throw (ex-info "This can't possibly work as-is...what's the equivalent?" {})))
