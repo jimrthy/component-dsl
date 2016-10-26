@@ -209,6 +209,19 @@ are found are available, so we can access the specs"
       ;; the data associated with that failure).
       ;; That's bound the socket in a way I don't have a good way to reset,
       ;; so it really means another JVM restart.
+
+      ;; Actually, this version is just 2 steps back.
+      ;; Instead of getting a started frereth-common/event-loop,
+      ;; I wind up with the nested definition w/ its system-configuration
+      ;; et al.
+      ;; So I really do need to recurse here.
+      ;; I think the problem is that I'm tangling up 2
+      ;; execution paths.
+      ;; I really need 1 to expand all the definitions like this,
+      ;; and then another to construct all of those expansions.
+
+      ;; Except that that isn't right either. Since the expanded
+      ;; constructions could very well have more nested constructors.
       (println "It looks like this should recurse because\n"
                (with-out-str (pprint instance))
                "\ncreated by calling" ctor
