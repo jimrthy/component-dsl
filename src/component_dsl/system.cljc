@@ -201,46 +201,11 @@ them into either
                    (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) msg ex)))))]
     (if-not (s/valid? ::nested-definition instance)
       [[name instance]]
-      (do
-        ;; I'm getting inconclusive errors from this.
-        ;; Maybe because I didn't have the latest version installed?
-        ;; I need to trace the actual steps out more explicitly.
-        ;; Or maybe it just really does need to work like macro expansion
-        ;; because that's effectively what I'm doing.
-        ;; I ran the frereth server (start) through 3 times in a row.
-        ;; First it failed because s/explain-data is edging over into
-        ;; the sample data generator.
-        ;; And then it failed because it couldn't rebind a socket.
-        ;; When I restarted my JVM, this failed.
-        ;; When I commented out the exception this was throwing, and enable
-        ;; the pre-validation on frereth.common.async-zmq/run-async-loop!,
-        ;; it fails there (as opposed to failing when it tries to explain
-        ;; the data associated with that failure).
-        ;; That's bound the socket in a way I don't have a good way to reset,
-        ;; so it really means another JVM restart.
-
-        ;; Actually, this version is just 2 steps back.
-        ;; Instead of getting a started frereth-common/event-loop,
-        ;; I wind up with the nested definition w/ its system-configuration
-        ;; et al.
-        ;; So I really do need to recurse here.
-        ;; I think the problem is that I'm tangling up 2
-        ;; execution paths.
-        ;; I really need 1 to expand all the definitions like this,
-        ;; and then another to construct all of those expansions.
-
-        ;; Except that that isn't right either. Since the expanded
-        ;; constructions could very well have more nested constructors.
-        (println "It looks like this should recurse because\n"
-                 (with-out-str (pprint instance))
-                 "\ncreated by calling" ctor
-                 "\non" (with-out-str (pprint local-options))
-                 "\nfor the Component named" name
-                 "\nis a valid ::nested-definition"
-                 "\nConformed version looks like:\n"
-                 (with-out-str (pprint (s/conform ::nested-definition instance))))
-        (comment (throw (ex-info "Should have already handled recursion" {})))
-        (create-nested-components local-options instance)))))
+      ;; TODO: Need a unit test that really checks this
+      ;; The frereth.common.async-zmq EventPairs as used by
+      ;; frereth.server were the main motivation/pain point.
+      ;; So those would probably be a great option to mimic.
+      (create-nested-components local-options instance))))
 
 (s/fdef create-individual-component
         :args (s/cat :config-options ::configuration-tree
