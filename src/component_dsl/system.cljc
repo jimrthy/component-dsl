@@ -102,7 +102,7 @@
   keyword?)
 (s/def ::component-instance map?)
 ;; This is really a pair of the keyword "name" and the unstarted instance
-(s/def ::component (s/cat ::component-instance-name ::component-instance))
+(s/def ::component (s/tuple ::component-instance-name ::component-instance))
 
 ;; Q: Can I get anything more interesting from this?
 (s/def ::system-map #(instance? SystemMap %))
@@ -176,9 +176,16 @@ are found are available, so we can access the specs"
 (s/fdef build-instances
         :args (s/cat :name keyword?
                      :ctor (s/fspec :args (s/cat :options map?)
-                                    :ret (s/coll-of ::component))))
-(declare initialize)
+                                    :ret (s/or :single ::component
+                                               :nested ::nested-definition)))
+        :ret (s/or :single ::component
+                   :nested (s/coll-of ::component)))
+(declare create-nested-components)
 (defn build-instances
+  "Converts a name/ctor/options trio and converts
+them into either
+1. a component that's ready to start
+2. a seq of those, if the ctor generates a nested tree"
   [name ctor local-options]
   (let [instance
         (try (ctor local-options)
@@ -192,46 +199,48 @@ are found are available, so we can access the specs"
                                 local-options
                                 "\nHonestly, this is fatal")]
                    (throw (#?(:clj RuntimeException.) #?(:cljs js/Error.) msg ex)))))]
-    (when (s/valid? ::nested-definition instance)
-      ;; I'm getting inconclusive errors from this.
-      ;; Maybe because I didn't have the latest version installed?
-      ;; I need to trace the actual steps out more explicitly.
-      ;; Or maybe it just really does need to work like macro expansion
-      ;; because that's effectively what I'm doing.
-      ;; I ran the frereth server (start) through 3 times in a row.
-      ;; First it failed because s/explain-data is edging over into
-      ;; the sample data generator.
-      ;; And then it failed because it couldn't rebind a socket.
-      ;; When I restarted my JVM, this failed.
-      ;; When I commented out the exception this was throwing, and enable
-      ;; the pre-validation on frereth.common.async-zmq/run-async-loop!,
-      ;; it fails there (as opposed to failing when it tries to explain
-      ;; the data associated with that failure).
-      ;; That's bound the socket in a way I don't have a good way to reset,
-      ;; so it really means another JVM restart.
+    (if-not (s/valid? ::nested-definition instance)
+      [[name instance]]
+      (do
+        ;; I'm getting inconclusive errors from this.
+        ;; Maybe because I didn't have the latest version installed?
+        ;; I need to trace the actual steps out more explicitly.
+        ;; Or maybe it just really does need to work like macro expansion
+        ;; because that's effectively what I'm doing.
+        ;; I ran the frereth server (start) through 3 times in a row.
+        ;; First it failed because s/explain-data is edging over into
+        ;; the sample data generator.
+        ;; And then it failed because it couldn't rebind a socket.
+        ;; When I restarted my JVM, this failed.
+        ;; When I commented out the exception this was throwing, and enable
+        ;; the pre-validation on frereth.common.async-zmq/run-async-loop!,
+        ;; it fails there (as opposed to failing when it tries to explain
+        ;; the data associated with that failure).
+        ;; That's bound the socket in a way I don't have a good way to reset,
+        ;; so it really means another JVM restart.
 
-      ;; Actually, this version is just 2 steps back.
-      ;; Instead of getting a started frereth-common/event-loop,
-      ;; I wind up with the nested definition w/ its system-configuration
-      ;; et al.
-      ;; So I really do need to recurse here.
-      ;; I think the problem is that I'm tangling up 2
-      ;; execution paths.
-      ;; I really need 1 to expand all the definitions like this,
-      ;; and then another to construct all of those expansions.
+        ;; Actually, this version is just 2 steps back.
+        ;; Instead of getting a started frereth-common/event-loop,
+        ;; I wind up with the nested definition w/ its system-configuration
+        ;; et al.
+        ;; So I really do need to recurse here.
+        ;; I think the problem is that I'm tangling up 2
+        ;; execution paths.
+        ;; I really need 1 to expand all the definitions like this,
+        ;; and then another to construct all of those expansions.
 
-      ;; Except that that isn't right either. Since the expanded
-      ;; constructions could very well have more nested constructors.
-      (println "It looks like this should recurse because\n"
-               (with-out-str (pprint instance))
-               "\ncreated by calling" ctor
-               "\non" (with-out-str (pprint local-options))
-               "\nfor the Component named" name
-               "\nis a valid ::nested-definition"
-               "\nConformed version looks like:\n"
-               (with-out-str (pprint (s/conform ::nested-definition instance))))
-      (comment (throw (ex-info "Should have already handled recursion" {}))))
-    [[name instance]]))
+        ;; Except that that isn't right either. Since the expanded
+        ;; constructions could very well have more nested constructors.
+        (println "It looks like this should recurse because\n"
+                 (with-out-str (pprint instance))
+                 "\ncreated by calling" ctor
+                 "\non" (with-out-str (pprint local-options))
+                 "\nfor the Component named" name
+                 "\nis a valid ::nested-definition"
+                 "\nConformed version looks like:\n"
+                 (with-out-str (pprint (s/conform ::nested-definition instance))))
+        (comment (throw (ex-info "Should have already handled recursion" {})))
+        (create-nested-components local-options instance)))))
 
 (s/fdef create-individual-component
         :args (s/cat :config-options ::configuration-tree
@@ -302,6 +311,7 @@ are found are available, so we can access the specs"
                          :defaults defaults
                          :overrides overrides}))))
 
+(declare initialize)
 (s/fdef create-nested-components
         :args (s/cat :config-options ::configuration-tree
                      :nested ::nested-definition)
