@@ -757,8 +757,13 @@ Distinguish one from the other here."
 (defn pre-process
   "Have to flatten out nested system definitions"
   [{:keys [::structure ::dependencies ::options]
-      :as params}]
+    :as params}]
   (let [true-tops (->> structure
+                       ;; Note that this means you must specify the
+                       ;; symbol of the constructors. You can't
+                       ;; pass the symbol to the reader to have it
+                       ;; converted to the fn that the related var
+                       ;; names.
                        (filter (comp symbol? second))
                        (into {}))
         ;; These should probably have been named better.
